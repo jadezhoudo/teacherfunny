@@ -244,7 +244,14 @@ const TeacherStats = () => {
             )}
           </div>
         </div>
-      </div>
+      </div>{" "}
+      {/* Footer Section */}
+      <footer className="mt-8 text-center text-gray-600">
+        <div className="flex items-center justify-center gap-2">
+          <span>©</span>
+          <span>2025 Châu Đỗ. All rights reserved.</span>
+        </div>
+      </footer>
     </div>
   );
 };

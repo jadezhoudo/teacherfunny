@@ -20,6 +20,52 @@ const TeacherStats = () => {
   }, []);
 
   // API Service
+  //   const ApiService = {
+  //     async fetchWithAuth(url, options = {}) {
+  //       const response = await fetch(url, {
+  //         ...options,
+  //         headers: {
+  //           Authorization: `Bearer ${bearerToken}`,
+  //           "Content-Type": "application/json",
+  //           ...options.headers,
+  //         },
+  //       });
+
+  //       if (!response.ok) {
+  //         throw new Error(`API error: ${response.status}`);
+  //       }
+
+  //       return response.json();
+  //     },
+
+  //     getProducts() {
+  //       return this.fetchWithAuth(
+  //         "https://api-icc.ican.vn/teacher/api/v1/api/teacher/products?page=SCHEDULE"
+  //       );
+  //     },
+
+  //     getShifts(dateRange, productIds) {
+  //       const params = new URLSearchParams({
+  //         "status[]": "ACTIVE",
+  //         fromDate: dateRange.from,
+  //         toDate: dateRange.to,
+  //       });
+
+  //       const productIdsQuery = productIds
+  //         .map((id) => `product_ids[]=${id}`)
+  //         .join("&");
+  //       return this.fetchWithAuth(
+  //         `https://api-icc.ican.vn/teacher/api/v1/api/teacher/shifts?${params}&${productIdsQuery}`
+  //       );
+  //     },
+
+  //     getDiaryDetails(classSessionId) {
+  //       return this.fetchWithAuth(
+  //         `https://api-icc.ican.vn/teacher/api/v1/api/diary/${classSessionId}`
+  //       );
+  //     },
+  //   };
+
   const ApiService = {
     async fetchWithAuth(url, options = {}) {
       const response = await fetch(url, {
@@ -40,7 +86,7 @@ const TeacherStats = () => {
 
     getProducts() {
       return this.fetchWithAuth(
-        "https://api-icc.ican.vn/teacher/api/v1/api/teacher/products?page=SCHEDULE"
+        "https://api-teacher-ican.vercel.app/api/teacher/api/v1/api/teacher/products?page=SCHEDULE"
       );
     },
 
@@ -55,13 +101,13 @@ const TeacherStats = () => {
         .map((id) => `product_ids[]=${id}`)
         .join("&");
       return this.fetchWithAuth(
-        `https://api-icc.ican.vn/teacher/api/v1/api/teacher/shifts?${params}&${productIdsQuery}`
+        `https://api-teacher-ican.vercel.app/api/teacher/api/v1/api/teacher/shifts?${params}&${productIdsQuery}`
       );
     },
 
     getDiaryDetails(classSessionId) {
       return this.fetchWithAuth(
-        `https://api-icc.ican.vn/teacher/api/v1/api/diary/${classSessionId}`
+        `https://api-teacher-ican.vercel.app/api/teacher/api/v1/api/diary/${classSessionId}`
       );
     },
   };

@@ -23,7 +23,6 @@ const TeacherStats = () => {
   const ApiService = {
     async fetchWithAuth(url, options = {}) {
       const response = await fetch(url, {
-        mode: "no-cors",
         ...options,
         headers: {
           Authorization: `Bearer ${bearerToken}`,

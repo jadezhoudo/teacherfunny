@@ -20,6 +20,52 @@ const TeacherStats = () => {
   }, []);
 
   // API Service
+  //   const ApiService = {
+  //     async fetchWithAuth(url, options = {}) {
+  //       const response = await fetch(url, {
+  //         ...options,
+  //         headers: {
+  //           Authorization: `Bearer ${bearerToken}`,
+  //           "Content-Type": "application/json",
+  //           ...options.headers,
+  //         },
+  //       });
+
+  //       if (!response.ok) {
+  //         throw new Error(`API error: ${response.status}`);
+  //       }
+
+  //       return response.json();
+  //     },
+
+  //     getProducts() {
+  //       return this.fetchWithAuth(
+  //         "https://api-icc.ican.vn/teacher/api/v1/api/teacher/products?page=SCHEDULE"
+  //       );
+  //     },
+
+  //     getShifts(dateRange, productIds) {
+  //       const params = new URLSearchParams({
+  //         "status[]": "ACTIVE",
+  //         fromDate: dateRange.from,
+  //         toDate: dateRange.to,
+  //       });
+
+  //       const productIdsQuery = productIds
+  //         .map((id) => `product_ids[]=${id}`)
+  //         .join("&");
+  //       return this.fetchWithAuth(
+  //         `https://api-icc.ican.vn/teacher/api/v1/api/teacher/shifts?${params}&${productIdsQuery}`
+  //       );
+  //     },
+
+  //     getDiaryDetails(classSessionId) {
+  //       return this.fetchWithAuth(
+  //         `https://api-icc.ican.vn/teacher/api/v1/api/diary/${classSessionId}`
+  //       );
+  //     },
+  //   };
+
   const ApiService = {
     async fetchWithAuth(url, options = {}) {
       const response = await fetch(url, {
@@ -100,42 +146,19 @@ const TeacherStats = () => {
 
   // Stats Calculator
   const StatsCalculator = {
-    calculateParticipationScore(details, classData) {
+    calculateParticipationScore(details) {
       let score = 0;
-      let absentStudents = [];
-
       if (details.length > 1) {
-        const absentDetails = details.filter(
+        const absentCount = details.filter(
           (detail) => detail.isParticipated === false
-        );
-        const absentCount = absentDetails.length;
-
-        // Store absent student names with date from classData
-        absentStudents = absentDetails.map((detail) => ({
-          studentName: detail.studentName,
-          fromDate: classData.fromDate,
-          className: classData.className,
-        }));
-
-        if (absentCount === 2) {
-          score += 0.5;
-        }
+        ).length;
+        if (absentCount === 2) score += 0.5;
       } else {
         details.forEach((detail) => {
-          if (detail.isParticipated === false) {
-            score += 0.5;
-            console.log("hs vang1 =>>>" + detail.studentName);
-            console.log("hs vang2 =>>>" + detail.fromDate);
-            console.log("hs vang3 =>>>" + detail.className);
-            absentStudents.push({
-              studentName: detail.studentName,
-              fromDate: classData.fromDate,
-              className: classData.className,
-            });
-          }
+          if (detail.isParticipated === false) score += 0.5;
         });
       }
-      return { score, absentStudents };
+      return score;
     },
 
     formatCurrency(amount) {
@@ -161,7 +184,6 @@ const TeacherStats = () => {
       );
       let totalFinishedCount = 0;
       let totalParticipationScore = 0;
-      let allAbsentStudents = [];
 
       for (const dateRange of dateRanges) {
         const shiftsData = await ApiService.getShifts(dateRange, productIds);
@@ -173,21 +195,10 @@ const TeacherStats = () => {
             const diaryData = await ApiService.getDiaryDetails(
               classItem.classSessionId
             );
-
-            const { score, absentStudents } =
+            totalParticipationScore +=
               StatsCalculator.calculateParticipationScore(
-                diaryData.data.details || [],
-                {
-                  fromDate: classItem.fromDate,
-                  className: classItem.className,
-                }
+                diaryData.data.details || []
               );
-
-            totalParticipationScore += score;
-
-            if (absentStudents.length > 0) {
-              allAbsentStudents.push(...absentStudents);
-            }
           }
         }
       }
@@ -200,7 +211,6 @@ const TeacherStats = () => {
         totalParticipationScore,
         totalClasses,
         totalMoney,
-        absentStudents: allAbsentStudents,
       });
     } catch (err) {
       setError(err.message);
@@ -217,6 +227,7 @@ const TeacherStats = () => {
             <h1 className="text-3xl font-bold text-center mb-8">
               Teacher Statistics
             </h1>
+
             <div className="flex gap-4 mb-4">
               <select
                 value={selectedMonth}
@@ -243,6 +254,7 @@ const TeacherStats = () => {
                 ))}
               </select>
             </div>
+
             <button
               onClick={fetchData}
               disabled={loading || !bearerToken}
@@ -250,9 +262,11 @@ const TeacherStats = () => {
             >
               {loading ? "Processing..." : "Calculate Statistics"}
             </button>
+
             <div className="mt-4">
               <p>Processed count: {processedCount}</p>
             </div>
+
             {error && <div className="text-red-500 mt-4">Error: {error}</div>}
 
             {stats && (
@@ -272,47 +286,6 @@ const TeacherStats = () => {
                   <strong>Total amount:</strong>{" "}
                   {StatsCalculator.formatCurrency(stats.totalMoney)}
                 </p>
-
-                {/* Absent Students Section with fromDate */}
-                {stats.absentStudents.length > 0 && (
-                  <div className="mt-4">
-                    <h3 className="font-bold text-lg mb-2">
-                      - Absent Students -
-                    </h3>
-                    <div className="max-h-80 overflow-y-auto bg-gray-50 rounded p-3">
-                      {stats.absentStudents
-                        .sort(
-                          (a, b) => new Date(b.fromDate) - new Date(a.fromDate)
-                        )
-                        .map((student, index) => (
-                          <div
-                            key={`${student.fromDate}-${index}`}
-                            className="mb-4 pb-3 border-b border-gray-200 last:border-0"
-                          >
-                            <div className="bg-white p-3 rounded shadow-sm">
-                              <p className="font-medium text-gray-800">
-                                Class: {student.className}
-                              </p>
-                              <p className="text-gray-600 text-sm mb-2">
-                                {new Date(student.fromDate).toLocaleDateString(
-                                  "vi-VN",
-                                  {
-                                    weekday: "long",
-                                    year: "numeric",
-                                    month: "long",
-                                    day: "numeric",
-                                  }
-                                )}
-                              </p>
-                              <p className="text-gray-700">
-                                Student: {student.studentName}
-                              </p>
-                            </div>
-                          </div>
-                        ))}
-                    </div>
-                  </div>
-                )}
               </div>
             )}
           </div>

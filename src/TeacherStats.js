@@ -103,7 +103,14 @@ const TeacherStats = () => {
     calculateParticipationScore(details, classData) {
       let score = 0;
       let absentStudents = [];
-
+      const isDuplicate = (newEntry) => {
+        return absentStudents.some(
+          (existing) =>
+            existing.className === newEntry.className &&
+            new Date(existing.fromDate).getTime() ===
+              new Date(newEntry.fromDate).getTime()
+        );
+      };
       if (details.length > 1) {
         const absentDetails = details.filter(
           (detail) => detail.isParticipated === false
@@ -111,22 +118,34 @@ const TeacherStats = () => {
         const absentCount = absentDetails.length;
 
         // Store absent student names with date from classData
-        absentStudents = absentDetails.map((detail) => ({
-          studentName: detail.studentName,
-          fromDate: classData.fromDate,
-          className: classData.className,
-        }));
+        // absentStudents = absentDetails.map((detail) => ({
+        //   studentName: detail.studentName,
+        //   fromDate: classData.fromDate,
+        //   className: classData.className,
+        // }));
 
         if (absentCount === 2) {
           score += 0.5;
+          // Combine student names when there are 2 absences in the same class
+          const combinedStudentNames = absentDetails
+            .map((detail) => detail.studentName)
+            .join(" + ");
+
+          const newEntry = {
+            studentName: combinedStudentNames,
+            fromDate: classData.fromDate,
+            className: classData.className,
+          };
+
+          // Only push if this combination doesn't already exist
+          if (!isDuplicate(newEntry)) {
+            absentStudents.push(newEntry);
+          }
         }
       } else {
         details.forEach((detail) => {
           if (detail.isParticipated === false) {
             score += 0.5;
-            console.log("hs vang1 =>>>" + detail.studentName);
-            console.log("hs vang2 =>>>" + detail.fromDate);
-            console.log("hs vang3 =>>>" + detail.className);
             absentStudents.push({
               studentName: detail.studentName,
               fromDate: classData.fromDate,
@@ -150,6 +169,7 @@ const TeacherStats = () => {
     try {
       setLoading(true);
       setError(null);
+      setStats(null);
       setProcessedCount(0);
 
       const productData = await ApiService.getProducts();

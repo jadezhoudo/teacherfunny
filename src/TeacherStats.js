@@ -265,7 +265,7 @@ const TeacherStats = () => {
             </div>
             <button
               onClick={fetchData}
-              disabled={loading || !bearerToken}
+              disabled={loading}
               className="mt-4 w-full px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-gray-300"
             >
               {loading ? "Processing..." : "Calculate Statistics"}
@@ -273,7 +273,14 @@ const TeacherStats = () => {
             <div className="mt-4">
               <p>Processed count: {processedCount}</p>
             </div>
-            {error && <div className="text-red-500 mt-4">Error: {error}</div>}
+            {error && (
+              <div className="text-red-500 mt-4">
+                Error:{" "}
+                {error === "API error: 401"
+                  ? "Please log in to the address: https://teacher.ican.vn \nThen use the extension to access the website."
+                  : error}
+              </div>
+            )}
 
             {stats && (
               <div className="mt-6 space-y-2">

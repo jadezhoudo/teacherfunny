@@ -256,7 +256,11 @@ const TeacherStats = () => {
                 onChange={(e) => setSelectedYear(parseInt(e.target.value))}
                 className="flex-1 p-2 border rounded"
               >
-                {[selectedYear, selectedYear - 1].map((year) => (
+                {[
+                  new Date().getFullYear(), // Current year (2025)
+                  new Date().getFullYear() - 1, // Previous year (2024)
+                  new Date().getFullYear() - 2, // Year before (2023)
+                ].map((year) => (
                   <option key={year} value={year}>
                     {year}
                   </option>

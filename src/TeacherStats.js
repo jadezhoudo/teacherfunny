@@ -282,6 +282,8 @@ const TeacherStats = () => {
                 Error:{" "}
                 {error === "API error: 401"
                   ? "Please log in to the address: https://teacher.ican.vn \nThen use the extension to access the website."
+                  : error === "API error: 403"
+                  ? "Please Reload The Page !"
                   : error}
               </div>
             )}

@@ -490,22 +490,22 @@ const TeacherStats = () => {
   //     }
   //   };
 
-  const fetchHistory = async () => {
-    try {
-      const q = query(
-        collection(db, "teacher_stats"),
-        orderBy("timestamp", "desc")
-      );
-      const querySnapshot = await getDocs(q);
-      const historyData = querySnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
-      setHistory(historyData);
-    } catch (e) {
-      console.error("Error fetching history:", e);
-    }
-  };
+  //   const fetchHistory = async () => {
+  //     try {
+  //       const q = query(
+  //         collection(db, "teacher_stats"),
+  //         orderBy("timestamp", "desc")
+  //       );
+  //       const querySnapshot = await getDocs(q);
+  //       const historyData = querySnapshot.docs.map((doc) => ({
+  //         id: doc.id,
+  //         ...doc.data(),
+  //       }));
+  //       setHistory(historyData);
+  //     } catch (e) {
+  //       console.error("Error fetching history:", e);
+  //     }
+  //   };
 
   function parseJwt(token) {
     try {

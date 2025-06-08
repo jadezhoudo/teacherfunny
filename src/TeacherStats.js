@@ -30,11 +30,11 @@ const TeacherStats = () => {
   }, []);
 
   // Auto-fetch on init or when month/year changes
-  useEffect(() => {
-    if (bearerToken) {
-      fetchData();
-    }
-  }, [bearerToken, selectedMonth, selectedYear]);
+  //   useEffect(() => {
+  //     if (bearerToken) {
+  //       fetchData();
+  //     }
+  //   }, [bearerToken, selectedMonth, selectedYear]);
 
   const ApiService = {
     async fetchWithAuth(url, options = {}) {

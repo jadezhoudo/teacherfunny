@@ -20,10 +20,6 @@ const TeacherStats = () => {
   const [processedCount, setProcessedCount] = useState(0);
   const [history, setHistory] = useState([]);
   const savedToken = localStorage.getItem("teacher_token");
-  const [showLoginDialog, setShowLoginDialog] = useState(false);
-  const [phoneNumber, setPhoneNumber] = useState("");
-  const [otp, setOtp] = useState("");
-  const [confirmationResult, setConfirmationResult] = useState(null);
   const [userEmail, setUserEmail] = useState(
     localStorage.getItem("teacher_email") || ""
   );
@@ -79,30 +75,30 @@ const TeacherStats = () => {
   };
 
   // FIX parseJwt:
-  function parseJwt(token) {
-    try {
-      if (!token) return null;
+  //   function parseJwt(token) {
+  //     try {
+  //       if (!token) return null;
 
-      const parts = token.split(".");
-      if (parts.length !== 3) throw new Error("Invalid JWT format.");
+  //       const parts = token.split(".");
+  //       if (parts.length !== 3) throw new Error("Invalid JWT format.");
 
-      const base64Url = parts[1];
-      const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
-      const jsonPayload = decodeURIComponent(
-        atob(base64)
-          .split("")
-          .map((c) => {
-            return "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2);
-          })
-          .join("")
-      );
+  //       const base64Url = parts[1];
+  //       const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+  //       const jsonPayload = decodeURIComponent(
+  //         atob(base64)
+  //           .split("")
+  //           .map((c) => {
+  //             return "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2);
+  //           })
+  //           .join("")
+  //       );
 
-      return JSON.parse(jsonPayload);
-    } catch (e) {
-      console.error("Invalid JWT", e);
-      return null;
-    }
-  }
+  //       return JSON.parse(jsonPayload);
+  //     } catch (e) {
+  //       console.error("Invalid JWT", e);
+  //       return null;
+  //     }
+  //   }
 
   // Fetch token from localStorage
   useEffect(() => {
@@ -130,9 +126,6 @@ const TeacherStats = () => {
 
       // Set state
       setUserEmail(user.email || "");
-
-      // Đóng dialog nếu có
-      setShowLoginDialog(false);
     } catch (error) {
       console.error("Google login error:", error);
     }

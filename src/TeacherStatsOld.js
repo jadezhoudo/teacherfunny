@@ -1,12 +1,4 @@
 import React, { useState, useEffect } from "react";
-import { db } from "./firebase";
-import {
-  collection,
-  addDoc,
-  getDocs,
-  orderBy,
-  query,
-} from "firebase/firestore";
 
 const TeacherStats = () => {
   const [loading, setLoading] = useState(false);
@@ -16,8 +8,6 @@ const TeacherStats = () => {
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [bearerToken, setBearerToken] = useState("");
   const [processedCount, setProcessedCount] = useState(0);
-  const [history, setHistory] = useState([]);
-  const savedToken = localStorage.getItem("teacher_token");
 
   // Fetch token from localStorage
   useEffect(() => {
@@ -29,13 +19,7 @@ const TeacherStats = () => {
     }
   }, []);
 
-  // Auto-fetch on init or when month/year changes
-  useEffect(() => {
-    if (bearerToken) {
-      fetchData();
-    }
-  }, [bearerToken, selectedMonth, selectedYear]);
-
+  // API Service
   const ApiService = {
     async fetchWithAuth(url, options = {}) {
       const response = await fetch(url, {
@@ -82,6 +66,7 @@ const TeacherStats = () => {
     },
   };
 
+  // Date Utilities
   const DateUtil = {
     generateDateRanges(year, month) {
       const startDate = new Date(Date.UTC(year, month - 1, 1));
@@ -113,6 +98,7 @@ const TeacherStats = () => {
     },
   };
 
+  // Stats Calculator
   const StatsCalculator = {
     calculateParticipationScore(details, classData) {
       let score = 0;
@@ -131,8 +117,16 @@ const TeacherStats = () => {
         );
         const absentCount = absentDetails.length;
 
+        // Store absent student names with date from classData
+        // absentStudents = absentDetails.map((detail) => ({
+        //   studentName: detail.studentName,
+        //   fromDate: classData.fromDate,
+        //   className: classData.className,
+        // }));
+
         if (absentCount === 2) {
           score += 0.5;
+          // Combine student names when there are 2 absences in the same class
           const combinedStudentNames = absentDetails
             .map((detail) => detail.studentName)
             .join(" + ");
@@ -143,6 +137,7 @@ const TeacherStats = () => {
             className: classData.className,
           };
 
+          // Only push if this combination doesn't already exist
           if (!isDuplicate(newEntry)) {
             absentStudents.push(newEntry);
           }
@@ -220,76 +215,19 @@ const TeacherStats = () => {
       const totalClasses = totalFinishedCount - totalParticipationScore;
       const totalMoney = totalClasses * 50000;
 
-      const statsData = {
+      setStats({
         totalFinishedCount,
         totalParticipationScore,
         totalClasses,
         totalMoney,
         absentStudents: allAbsentStudents,
-      };
-
-      setStats(statsData);
-
-      // Save to Firestore
-      const decoded = parseJwt(savedToken);
-      const email = decoded?.email || "unknown"; // nếu có trường email
-
-      try {
-        await addDoc(collection(db, "teacher_stats"), {
-          email,
-          token: savedToken, // lưu luôn JWT nếu bạn muốn
-          timestamp: new Date().toISOString(),
-          month: selectedMonth,
-          year: selectedYear,
-          ...statsData,
-        });
-        console.log("Stats saved to Firestore");
-      } catch (e) {
-        console.error("Error saving to Firestore:", e);
-      }
+      });
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
   };
-
-  const fetchHistory = async () => {
-    try {
-      const q = query(
-        collection(db, "teacher_stats"),
-        orderBy("timestamp", "desc")
-      );
-      const querySnapshot = await getDocs(q);
-      const historyData = querySnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
-      setHistory(historyData);
-    } catch (e) {
-      console.error("Error fetching history:", e);
-    }
-  };
-
-  function parseJwt(token) {
-    try {
-      const base64Url = token.split(".")[1];
-      const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
-      const jsonPayload = decodeURIComponent(
-        atob(base64)
-          .split("")
-          .map((c) => {
-            return "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2);
-          })
-          .join("")
-      );
-
-      return JSON.parse(jsonPayload);
-    } catch (e) {
-      console.error("Invalid JWT", e);
-      return null;
-    }
-  }
 
   return (
     <div className="min-h-screen bg-gray-100 py-6 flex flex-col justify-center sm:py-12">
@@ -319,9 +257,9 @@ const TeacherStats = () => {
                 className="flex-1 p-2 border rounded"
               >
                 {[
-                  new Date().getFullYear(),
-                  new Date().getFullYear() - 1,
-                  new Date().getFullYear() - 2,
+                  new Date().getFullYear(), // Current year (2025)
+                  new Date().getFullYear() - 1, // Previous year (2024)
+                  new Date().getFullYear() - 2, // Year before (2023)
                 ].map((year) => (
                   <option key={year} value={year}>
                     {year}
@@ -336,12 +274,6 @@ const TeacherStats = () => {
             >
               {loading ? "Processing..." : "Calculate Statistics"}
             </button>
-            {/* <button
-              onClick={fetchHistory}
-              className="mt-2 w-full px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600"
-            >
-              View History from Firestore
-            </button> */}
             <div className="mt-4">
               <p>Processed count: {processedCount}</p>
             </div>
@@ -355,6 +287,7 @@ const TeacherStats = () => {
                   : error}
               </div>
             )}
+
             {stats && (
               <div className="mt-6 space-y-2">
                 <p>
@@ -372,37 +305,53 @@ const TeacherStats = () => {
                   <strong>Total amount:</strong>{" "}
                   {StatsCalculator.formatCurrency(stats.totalMoney)}
                 </p>
-              </div>
-            )}
 
-            {history.length > 0 && (
-              <div className="mt-6">
-                <h3 className="font-bold mb-2">History from Firestore:</h3>
-                <ul className="space-y-2 max-h-64 overflow-y-auto">
-                  {history.map((item) => (
-                    <li
-                      key={item.id}
-                      className="p-2 bg-gray-50 rounded shadow-sm text-sm"
-                    >
-                      <p>
-                        📅{" "}
-                        <strong>
-                          {item.month}/{item.year}
-                        </strong>{" "}
-                        — Classes: {item.totalClasses} — Money:{" "}
-                        {StatsCalculator.formatCurrency(item.totalMoney)}
-                      </p>
-                      <p className="text-xs text-gray-500">
-                        Saved: {new Date(item.timestamp).toLocaleString()}
-                      </p>
-                    </li>
-                  ))}
-                </ul>
+                {/* Absent Students Section with fromDate */}
+                {stats.absentStudents.length > 0 && (
+                  <div className="mt-4">
+                    <h3 className="font-bold text-lg mb-2">
+                      - Absent Students -
+                    </h3>
+                    <div className="max-h-80 overflow-y-auto bg-gray-50 rounded p-3">
+                      {stats.absentStudents
+                        .sort(
+                          (a, b) => new Date(b.fromDate) - new Date(a.fromDate)
+                        )
+                        .map((student, index) => (
+                          <div
+                            key={`${student.fromDate}-${index}`}
+                            className="mb-4 pb-3 border-b border-gray-200 last:border-0"
+                          >
+                            <div className="bg-white p-3 rounded shadow-sm">
+                              <p className="font-medium text-gray-800">
+                                Class: {student.className}
+                              </p>
+                              <p className="text-gray-600 text-sm mb-2">
+                                {new Date(student.fromDate).toLocaleDateString(
+                                  "vi-VN",
+                                  {
+                                    weekday: "long",
+                                    year: "numeric",
+                                    month: "long",
+                                    day: "numeric",
+                                  }
+                                )}
+                              </p>
+                              <p className="text-gray-700">
+                                Student: {student.studentName}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
         </div>
-      </div>
+      </div>{" "}
+      {/* Footer Section */}
       <footer className="mt-8 text-center text-gray-600">
         <div className="flex items-center justify-center gap-2">
           <span>©</span>

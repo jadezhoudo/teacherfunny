@@ -8,7 +8,7 @@ import {
   query,
   setDoc,
 } from "firebase/firestore";
-import { signInWithPhoneNumber, RecaptchaVerifier } from "firebase/auth";
+import { GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 
 const TeacherStats = () => {
   const [loading, setLoading] = useState(false);
@@ -24,6 +24,9 @@ const TeacherStats = () => {
   const [phoneNumber, setPhoneNumber] = useState("");
   const [otp, setOtp] = useState("");
   const [confirmationResult, setConfirmationResult] = useState(null);
+  const [userEmail, setUserEmail] = useState(
+    localStorage.getItem("teacher_email") || ""
+  );
 
   // Fetch token from localStorage
   useEffect(() => {
@@ -36,57 +39,51 @@ const TeacherStats = () => {
     }
   }, []);
 
-  useEffect(() => {
-    if (showLoginDialog && !window.recaptchaVerifier) {
-      window.recaptchaVerifier = new RecaptchaVerifier(
-        "recaptcha-container",
-        {
-          size: "invisible",
-          callback: (response) => {
-            console.log("Recaptcha solved", response);
-          },
-        },
-        auth
-      );
-
-      window.recaptchaVerifier.render().then((widgetId) => {
-        window.recaptchaWidgetId = widgetId;
-      });
-    }
-  }, [showLoginDialog]);
-
-  const handleSendOtp = async () => {
+  const handleGoogleLogin = async () => {
     try {
-      const appVerifier = window.recaptchaVerifier;
-      const confirmation = await signInWithPhoneNumber(
-        auth,
-        phoneNumber,
-        appVerifier
-      );
-      setConfirmationResult(confirmation);
-      console.log("OTP sent!");
+      const provider = new GoogleAuthProvider();
+      const result = await signInWithPopup(auth, provider);
+      const user = result.user;
+
+      console.log("Google login success:", user);
+
+      // Lưu token + email vào localStorage
+      const token = await user.getIdToken();
+      localStorage.setItem("teacher_token", token);
+      localStorage.setItem("teacher_email", user.email || "");
+
+      // Set state
+      setUserEmail(user.email || "");
+
+      // Đóng dialog nếu có
+      setShowLoginDialog(false);
+
+      // Reload app state nếu muốn (hoặc không cần, vì ta set state rồi)
+      // window.location.reload();
     } catch (error) {
-      console.error("Error sending OTP", error);
+      console.error("Google login error:", error);
     }
   };
 
-  const handleVerifyOtp = async () => {
+  const handleLogout = async () => {
     try {
-      await confirmationResult.confirm(otp);
-      console.log("Phone authentication successful!");
-      setShowLoginDialog(false); // close dialog
-      // Optional: lưu thông tin user tại đây nếu muốn
+      // Clear Firebase auth
+      await auth.signOut();
+
+      // Clear localStorage
+      localStorage.removeItem("teacher_token");
+      localStorage.removeItem("teacher_email");
+
+      // Clear state
+      setBearerToken("");
+      setUserEmail("");
+
+      // Reload app
+      window.location.reload();
     } catch (error) {
-      console.error("Invalid OTP", error);
+      console.error("Logout error:", error);
     }
   };
-
-  // Auto-fetch on init or when month/year changes
-  //   useEffect(() => {
-  //     if (bearerToken) {
-  //       fetchData();
-  //     }
-  //   }, [bearerToken, selectedMonth, selectedYear]);
 
   const initScreen = async () => {
     // Save to Firestore
@@ -509,12 +506,30 @@ const TeacherStats = () => {
             >
               {loading ? "Processing..." : "Calculate Statistics"}
             </button>
-            <button
-              onClick={() => setShowLoginDialog(true)}
-              className="mt-2 px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600"
-            >
-              Login Internal
-            </button>
+            {userEmail ? (
+              <div className="mt-4 flex items-center justify-between mb-4 p-2 bg-green-100 text-green-800 rounded">
+                <span>Hello, {userEmail}</span>
+                <button
+                  onClick={handleLogout}
+                  className="ml-3 text-sm font-bold uppercase tracking-wide text-red-600 hover:text-red-700 hover:underline"
+                >
+                  Logout
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={handleGoogleLogin}
+                className="mt-4 w-full flex items-center justify-center gap-2 bg-white text-black px-4 py-2 rounded border border-gray-300 shadow hover:bg-[#86efac] transition"
+              >
+                <img
+                  src="https://www.svgrepo.com/show/475656/google-color.svg"
+                  alt="Google"
+                  className="w-5 h-5"
+                />
+                <span className="font-medium">Login with Google</span>
+              </button>
+            )}
+
             {/* <button
               onClick={fetchHistory}
               className="mt-2 w-full px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600"
@@ -582,56 +597,6 @@ const TeacherStats = () => {
           </div>
         </div>
       </div>
-      {showLoginDialog && (
-        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
-          <div className="bg-white p-6 rounded shadow-md w-96 relative">
-            <h2 className="text-xl mb-4 font-bold">Login Internal</h2>
-
-            {!confirmationResult ? (
-              <>
-                <input
-                  type="text"
-                  value={phoneNumber}
-                  onChange={(e) => setPhoneNumber(e.target.value)}
-                  placeholder="Enter phone number (+84...)"
-                  className="border p-2 w-full mb-4"
-                />
-                <button
-                  onClick={handleSendOtp}
-                  className="w-full bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600"
-                >
-                  Send OTP
-                </button>
-              </>
-            ) : (
-              <>
-                <input
-                  type="text"
-                  value={otp}
-                  onChange={(e) => setOtp(e.target.value)}
-                  placeholder="Enter OTP"
-                  className="border p-2 w-full mb-4"
-                />
-                <button
-                  onClick={handleVerifyOtp}
-                  className="w-full bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
-                >
-                  Verify OTP
-                </button>
-              </>
-            )}
-
-            <button
-              onClick={() => setShowLoginDialog(false)}
-              className="absolute top-2 right-2 text-gray-600 hover:text-black text-xl"
-            >
-              &times;
-            </button>
-
-            <div id="recaptcha-container"></div>
-          </div>
-        </div>
-      )}
       <footer className="mt-8 text-center text-gray-600">
         <div className="flex items-center justify-center gap-2">
           <span>©</span>

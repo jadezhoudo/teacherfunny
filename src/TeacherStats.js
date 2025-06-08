@@ -35,7 +35,7 @@ const TeacherStats = () => {
       setBearerToken(savedToken);
       initScreen();
     } else {
-      console.log("Token not found in localStorage.");
+      //console.log("Token not found in localStorage.");
     }
   }, []);
 
@@ -45,7 +45,7 @@ const TeacherStats = () => {
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
 
-      console.log("Google login success:", user);
+      //console.log("Google login success:", user);
 
       // Lưu token + email vào localStorage
       const token = await user.getIdToken();
@@ -100,7 +100,7 @@ const TeacherStats = () => {
         month: selectedMonth,
         year: selectedYear,
       });
-      console.log("Stats saved");
+      //console.log("Stats saved");
     } catch (e) {
       console.error("Error saving:", e);
     }
@@ -329,7 +329,7 @@ const TeacherStats = () => {
           year: selectedYear,
           ...statsData,
         });
-        console.log("Stats saved");
+        //console.log("Stats saved");
       } catch (e) {
         console.error("Error saving:", e);
       }

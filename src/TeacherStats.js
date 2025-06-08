@@ -27,6 +27,82 @@ const TeacherStats = () => {
   const [userEmail, setUserEmail] = useState(
     localStorage.getItem("teacher_email") || ""
   );
+  const [inputToken, setInputToken] = useState(
+    localStorage.getItem("teacher_token") || ""
+  );
+  const [showTokenInput, setShowTokenInput] = useState(false);
+
+  // State thêm:
+  const [showManualInput, setShowManualInput] = useState(false);
+
+  // Hàm SAVE TOKEN:
+  const handleSaveToken = () => {
+    if (!inputToken || inputToken.trim() === "") {
+      console.error("Please enter a token.");
+      return;
+    }
+
+    try {
+      // parse thử để validate
+      const decoded = parseJwt(inputToken);
+      if (!decoded) {
+        console.error("Invalid JWT.");
+        return;
+      }
+
+      localStorage.setItem("teacher_token", inputToken);
+      localStorage.setItem("teacher_email", decoded?.email || "");
+
+      setBearerToken(inputToken);
+      setUserEmail(decoded?.email || "");
+
+      console.log("Manual token saved successfully.");
+
+      // Optional: close manual input (nếu muốn)
+      setShowManualInput(false);
+      setInputToken("");
+    } catch (error) {
+      console.error("Error saving manual token:", error);
+    }
+  };
+
+  // Hàm DELETE TOKEN:
+  const handleDeleteToken = () => {
+    localStorage.removeItem("teacher_token");
+    localStorage.removeItem("teacher_email");
+
+    setBearerToken("");
+    setUserEmail("");
+    setInputToken("");
+
+    console.log("Manual token deleted.");
+  };
+
+  // FIX parseJwt:
+  function parseJwt(token) {
+    try {
+      if (!token) return null;
+
+      const parts = token.split(".");
+      if (parts.length !== 3) throw new Error("Invalid JWT format.");
+
+      const base64Url = parts[1];
+      const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+      const jsonPayload = decodeURIComponent(
+        atob(base64)
+          .split("")
+          .map((c) => {
+            return "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2);
+          })
+          .join("")
+      );
+
+      return JSON.parse(jsonPayload);
+    } catch (e) {
+      console.error("Invalid JWT", e);
+      return null;
+    }
+  }
 
   // Fetch token from localStorage
   useEffect(() => {
@@ -73,7 +149,7 @@ const TeacherStats = () => {
       // Clear localStorage
       localStorage.removeItem("teacher_token_google");
       localStorage.removeItem("teacher_email");
-
+      handleDeleteToken();
       // Clear state
       setBearerToken("");
       setUserEmail("");
@@ -443,6 +519,10 @@ const TeacherStats = () => {
 
   function parseJwt(token) {
     try {
+      if (!token || typeof token !== "string" || !token.includes(".")) {
+        throw new Error("Invalid token format");
+      }
+
       const base64Url = token.split(".")[1];
       const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
       const jsonPayload = decodeURIComponent(
@@ -499,13 +579,59 @@ const TeacherStats = () => {
                 ))}
               </select>
             </div>
-            <button
-              onClick={fetchData}
-              disabled={loading}
-              className="mt-4 w-full px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-gray-300"
-            >
-              {loading ? "Processing..." : "Calculate Statistics"}
-            </button>
+            <div className="flex items-center mt-4 mb-2">
+              <label htmlFor="toggleToken" className="mr-2 font-medium text-sm">
+                Use Manual Code
+              </label>
+              <input
+                id="toggleToken"
+                type="checkbox"
+                checked={showTokenInput}
+                onChange={(e) => setShowTokenInput(e.target.checked)}
+                className="toggle-checkbox hidden"
+              />
+              <div
+                onClick={() => setShowTokenInput(!showTokenInput)}
+                className={`w-10 h-5 flex items-center bg-gray-300 rounded-full p-1 cursor-pointer ${
+                  showTokenInput ? "bg-green-400" : "bg-gray-300"
+                }`}
+              >
+                <div
+                  className={`bg-white w-4 h-4 rounded-full shadow-md transform duration-300 ease-in-out ${
+                    showTokenInput ? "translate-x-5" : ""
+                  }`}
+                ></div>
+              </div>
+            </div>
+
+            {!bearerToken && !userEmail && showTokenInput && (
+              <div className="mt-4 mb-4">
+                <input
+                  type="text"
+                  value={inputToken}
+                  onChange={(e) => setInputToken(e.target.value)}
+                  placeholder="Enter code here"
+                  className="w-full border p-2 rounded mb-1"
+                />
+                <button
+                  onClick={handleSaveToken}
+                  className="w-full px-4 py-2 bg-purple-500 text-white rounded hover:bg-purple-600"
+                >
+                  Save Code
+                </button>
+              </div>
+            )}
+
+            {bearerToken && (
+              <button
+                onClick={fetchData}
+                disabled={loading}
+                className="mt-4 w-full px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-gray-300"
+              >
+                {loading ? "Processing..." : "Calculate Statistics"}
+              </button>
+            )}
+
             {userEmail ? (
               <div className="mt-4 flex items-center justify-between mb-4 p-2 bg-green-100 text-green-800 rounded">
                 <span>Hello, {userEmail}</span>
@@ -529,16 +655,23 @@ const TeacherStats = () => {
                 <span className="font-medium">Login with Google</span>
               </button>
             )}
-
+            {bearerToken && (
+              <button
+                onClick={handleDeleteToken}
+                className="mt-4 w-full px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
+              >
+                Delete Code
+              </button>
+            )}
             {/* <button
               onClick={fetchHistory}
               className="mt-2 w-full px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600"
             >
               View History from Firestore
             </button> */}
-            <div className="mt-4">
+            {/* <div className="mt-4">
               <p>Processed count: {processedCount}</p>
-            </div>
+            </div> */}
             {error && (
               <div className="text-red-500 mt-4">
                 Error:{" "}
@@ -547,6 +680,14 @@ const TeacherStats = () => {
                   : error === "API error: 403"
                   ? "Please Reload The Page !"
                   : error}
+              </div>
+            )}
+            {!bearerToken && (
+              <div className="text-red-500 mt-4">
+                Error:{" "}
+                {
+                  "Please log in to the address: https://teacher.ican.vn \nThen use the extension to access the website."
+                }
               </div>
             )}
             {stats && (

@@ -133,9 +133,6 @@ const TeacherStats = () => {
 
       // Đóng dialog nếu có
       setShowLoginDialog(false);
-
-      // Reload app state nếu muốn (hoặc không cần, vì ta set state rồi)
-      // window.location.reload();
     } catch (error) {
       console.error("Google login error:", error);
     }

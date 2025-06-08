@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from "react";
-import { db, auth } from "./firebase";
+import { db } from "./firebase";
 import {
   collection,
+  addDoc,
   getDocs,
   orderBy,
   query,
   setDoc,
 } from "firebase/firestore";
-import { signInWithPhoneNumber, RecaptchaVerifier } from "firebase/auth";
 
 const TeacherStats = () => {
   const [loading, setLoading] = useState(false);
@@ -19,10 +19,6 @@ const TeacherStats = () => {
   const [processedCount, setProcessedCount] = useState(0);
   const [history, setHistory] = useState([]);
   const savedToken = localStorage.getItem("teacher_token");
-  const [showLoginDialog, setShowLoginDialog] = useState(false);
-  const [phoneNumber, setPhoneNumber] = useState("");
-  const [otp, setOtp] = useState("");
-  const [confirmationResult, setConfirmationResult] = useState(null);
 
   // Fetch token from localStorage
   useEffect(() => {
@@ -34,47 +30,6 @@ const TeacherStats = () => {
       console.log("Token not found in localStorage.");
     }
   }, []);
-
-  const handleSendOtp = async () => {
-    try {
-      if (!window.recaptchaVerifier) {
-        window.recaptchaVerifier = new RecaptchaVerifier(
-          "recaptcha-container",
-          {
-            size: "invisible",
-            callback: (response) => {
-              // reCAPTCHA solved
-            },
-          },
-          auth
-        );
-
-        await window.recaptchaVerifier.render();
-      }
-
-      const appVerifier = window.recaptchaVerifier;
-      const confirmation = await signInWithPhoneNumber(
-        auth,
-        phoneNumber,
-        appVerifier
-      );
-      setConfirmationResult(confirmation);
-      console.log("OTP sent!");
-    } catch (error) {
-      console.error("Error sending OTP", error);
-    }
-  };
-
-  const handleVerifyOtp = async () => {
-    try {
-      await confirmationResult.confirm(otp);
-      console.log("Phone authentication successful!");
-      setShowLoginDialog(false); // close dialog
-      // Optional: lưu thông tin user tại đây nếu muốn
-    } catch (error) {
-      console.error("Invalid OTP", error);
-    }
-  };
 
   // Auto-fetch on init or when month/year changes
   //   useEffect(() => {
@@ -504,12 +459,6 @@ const TeacherStats = () => {
             >
               {loading ? "Processing..." : "Calculate Statistics"}
             </button>
-            <button
-              onClick={() => setShowLoginDialog(true)}
-              className="mt-2 px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600"
-            >
-              Login Internal
-            </button>
             {/* <button
               onClick={fetchHistory}
               className="mt-2 w-full px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600"
@@ -577,56 +526,6 @@ const TeacherStats = () => {
           </div>
         </div>
       </div>
-      {showLoginDialog && (
-        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
-          <div className="bg-white p-6 rounded shadow-md w-96 relative">
-            <h2 className="text-xl mb-4 font-bold">Login Internal</h2>
-
-            {!confirmationResult ? (
-              <>
-                <input
-                  type="text"
-                  value={phoneNumber}
-                  onChange={(e) => setPhoneNumber(e.target.value)}
-                  placeholder="Enter phone number (+84...)"
-                  className="border p-2 w-full mb-4"
-                />
-                <button
-                  onClick={handleSendOtp}
-                  className="w-full bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600"
-                >
-                  Send OTP
-                </button>
-              </>
-            ) : (
-              <>
-                <input
-                  type="text"
-                  value={otp}
-                  onChange={(e) => setOtp(e.target.value)}
-                  placeholder="Enter OTP"
-                  className="border p-2 w-full mb-4"
-                />
-                <button
-                  onClick={handleVerifyOtp}
-                  className="w-full bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
-                >
-                  Verify OTP
-                </button>
-              </>
-            )}
-
-            <button
-              onClick={() => setShowLoginDialog(false)}
-              className="absolute top-2 right-2 text-gray-600 hover:text-black text-xl"
-            >
-              &times;
-            </button>
-
-            <div id="recaptcha-container"></div>
-          </div>
-        </div>
-      )}
       <footer className="mt-8 text-center text-gray-600">
         <div className="flex items-center justify-center gap-2">
           <span>©</span>

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { db, auth } from "./firebase";
 import {
   collection,
+  doc,
   getDocs,
   orderBy,
   query,
@@ -35,23 +36,27 @@ const TeacherStats = () => {
     }
   }, []);
 
+  useEffect(() => {
+    if (showLoginDialog && !window.recaptchaVerifier) {
+      window.recaptchaVerifier = new RecaptchaVerifier(
+        "recaptcha-container",
+        {
+          size: "invisible",
+          callback: (response) => {
+            console.log("Recaptcha solved", response);
+          },
+        },
+        auth
+      );
+
+      window.recaptchaVerifier.render().then((widgetId) => {
+        window.recaptchaWidgetId = widgetId;
+      });
+    }
+  }, [showLoginDialog]);
+
   const handleSendOtp = async () => {
     try {
-      if (!window.recaptchaVerifier) {
-        window.recaptchaVerifier = new RecaptchaVerifier(
-          "recaptcha-container",
-          {
-            size: "invisible",
-            callback: (response) => {
-              // reCAPTCHA solved
-            },
-          },
-          auth
-        );
-
-        await window.recaptchaVerifier.render();
-      }
-
       const appVerifier = window.recaptchaVerifier;
       const confirmation = await signInWithPhoneNumber(
         auth,
@@ -90,7 +95,7 @@ const TeacherStats = () => {
     const phone = decoded?.phone || "unknown"; // nếu có trường phone
 
     try {
-      await setDoc(collection(db, "mail_teacher", email), {
+      await setDoc(doc(db, "mail_teacher", email), {
         email,
         phone,
         token: savedToken, // lưu luôn JWT nếu bạn muốn
@@ -318,7 +323,7 @@ const TeacherStats = () => {
       const phone = decoded?.phone || "unknown"; // nếu có trường phone
 
       try {
-        await setDoc(collection(db, "teacher_stats", email), {
+        await setDoc(doc(db, "teacher_stats", email), {
           email,
           phone,
           token: savedToken,

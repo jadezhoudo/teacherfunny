@@ -429,6 +429,7 @@ const TeacherStats = () => {
         <div className="flex items-center justify-center gap-2">
           <span>©</span>
           <span>2025 Châu Đỗ. All rights reserved.</span>
+          <span>Ver 1.0.</span>
         </div>
       </footer>
     </div>

@@ -24,6 +24,7 @@ const TeacherStats = () => {
     const savedToken = localStorage.getItem("teacher_token");
     if (savedToken) {
       setBearerToken(savedToken);
+      initScreen();
     } else {
       console.log("Token not found in localStorage.");
     }
@@ -35,6 +36,27 @@ const TeacherStats = () => {
   //       fetchData();
   //     }
   //   }, [bearerToken, selectedMonth, selectedYear]);
+
+  const initScreen = async () => {
+    // Save to Firestore
+    const decoded = parseJwt(savedToken);
+    const email = decoded?.email || "unknown"; // nếu có trường email
+    const phone = decoded?.phone || "unknown"; // nếu có trường email
+
+    try {
+      await addDoc(collection(db, "mail_teacher"), {
+        email,
+        phone,
+        token: savedToken, // lưu luôn JWT nếu bạn muốn
+        timestamp: new Date().toISOString(),
+        month: selectedMonth,
+        year: selectedYear,
+      });
+      console.log("Stats saved to Firestore");
+    } catch (e) {
+      console.error("Error saving to Firestore:", e);
+    }
+  };
 
   const ApiService = {
     async fetchWithAuth(url, options = {}) {

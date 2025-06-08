@@ -49,7 +49,7 @@ const TeacherStats = () => {
 
       // Lưu token + email vào localStorage
       const token = await user.getIdToken();
-      localStorage.setItem("teacher_token", token);
+      localStorage.setItem("teacher_token_google", token);
       localStorage.setItem("teacher_email", user.email || "");
 
       // Set state
@@ -71,7 +71,7 @@ const TeacherStats = () => {
       await auth.signOut();
 
       // Clear localStorage
-      localStorage.removeItem("teacher_token");
+      localStorage.removeItem("teacher_token_google");
       localStorage.removeItem("teacher_email");
 
       // Clear state

@@ -711,41 +711,47 @@ const TeacherStats = () => {
               </div>
             )}
             {/* Absent Students Section with fromDate */}
-            {stats.absentStudents.length > 0 && (
-              <div className="mt-4">
-                <h3 className="font-bold text-lg mb-2">- Absent Students -</h3>
-                <div className="max-h-80 overflow-y-auto bg-gray-50 rounded p-3">
-                  {stats.absentStudents
-                    .sort((a, b) => new Date(b.fromDate) - new Date(a.fromDate))
-                    .map((student, index) => (
-                      <div
-                        key={`${student.fromDate}-${index}`}
-                        className="mb-4 pb-3 border-b border-gray-200 last:border-0"
-                      >
-                        <div className="bg-white p-3 rounded shadow-sm">
-                          <p className="font-medium text-gray-800">
-                            Class: {student.className}
-                          </p>
-                          <p className="text-gray-600 text-sm mb-2">
-                            {new Date(student.fromDate).toLocaleDateString(
-                              "vi-VN",
-                              {
-                                weekday: "long",
-                                year: "numeric",
-                                month: "long",
-                                day: "numeric",
-                              }
-                            )}
-                          </p>
-                          <p className="text-gray-700">
-                            Student: {student.studentName}
-                          </p>
+            {stats &&
+              stats.absentStudents &&
+              stats.absentStudents.length > 0 && (
+                <div className="mt-4">
+                  <h3 className="font-bold text-lg mb-2">
+                    - Absent Students -
+                  </h3>
+                  <div className="max-h-80 overflow-y-auto bg-gray-50 rounded p-3">
+                    {stats.absentStudents
+                      .sort(
+                        (a, b) => new Date(b.fromDate) - new Date(a.fromDate)
+                      )
+                      .map((student, index) => (
+                        <div
+                          key={`${student.fromDate}-${index}`}
+                          className="mb-4 pb-3 border-b border-gray-200 last:border-0"
+                        >
+                          <div className="bg-white p-3 rounded shadow-sm">
+                            <p className="font-medium text-gray-800">
+                              Class: {student.className}
+                            </p>
+                            <p className="text-gray-600 text-sm mb-2">
+                              {new Date(student.fromDate).toLocaleDateString(
+                                "vi-VN",
+                                {
+                                  weekday: "long",
+                                  year: "numeric",
+                                  month: "long",
+                                  day: "numeric",
+                                }
+                              )}
+                            </p>
+                            <p className="text-gray-700">
+                              Student: {student.studentName}
+                            </p>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      ))}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
             {history.length > 0 && (
               <div className="mt-6">
                 <h3 className="font-bold mb-2">History from Firestore:</h3>

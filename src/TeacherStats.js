@@ -12,7 +12,15 @@ import { GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 
 const TeacherStats = () => {
   const [loading, setLoading] = useState(false);
-  const [stats, setStats] = useState(null);
+  //   const [stats, setStats] = useState(null);
+  const [stats, setStats] = useState({
+    totalFinishedCount: 0,
+    totalParticipationScore: 0,
+    totalClasses: 0,
+    totalMoney: 0,
+    absentStudents: [],
+  });
+
   const [error, setError] = useState(null);
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
@@ -621,7 +629,9 @@ const TeacherStats = () => {
                 {loading ? "Processing..." : "Calculate Statistics"}
               </button>
             )}
-
+            <div className="mt-4">
+              <p>Processed count: {processedCount}</p>
+            </div>
             {userEmail ? (
               <div className="mt-4 flex items-center justify-between mb-4 p-2 bg-green-100 text-green-800 rounded">
                 <span>Hello, {userEmail}</span>
@@ -633,17 +643,18 @@ const TeacherStats = () => {
                 </button>
               </div>
             ) : (
-              <button
-                onClick={handleGoogleLogin}
-                className="mt-4 w-full flex items-center justify-center gap-2 bg-white text-black px-4 py-2 rounded border border-gray-300 shadow hover:bg-[#86efac] transition"
-              >
-                <img
-                  src="https://www.svgrepo.com/show/475656/google-color.svg"
-                  alt="Google"
-                  className="w-5 h-5"
-                />
-                <span className="font-medium">Login with Google</span>
-              </button>
+              <div></div>
+              //   <button
+              //     onClick={handleGoogleLogin}
+              //     className="mt-4 w-full flex items-center justify-center gap-2 bg-white text-black px-4 py-2 rounded border border-gray-300 shadow hover:bg-[#86efac] transition"
+              //   >
+              //     <img
+              //       src="https://www.svgrepo.com/show/475656/google-color.svg"
+              //       alt="Google"
+              //       className="w-5 h-5"
+              //     />
+              //     <span className="font-medium">Login with Google</span>
+              //   </button>
             )}
             {bearerToken && (
               <button

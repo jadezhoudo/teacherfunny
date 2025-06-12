@@ -9,6 +9,7 @@ import {
   setDoc,
 } from "firebase/firestore";
 import { GoogleAuthProvider, signInWithPopup } from "firebase/auth";
+import pLimit from "p-limit";
 
 const TeacherStats = () => {
   const [loading, setLoading] = useState(false);
@@ -314,106 +315,6 @@ const TeacherStats = () => {
     },
   };
 
-  //   const fetchData = async () => {
-  //     try {
-  //       setLoading(true);
-  //       setError(null);
-  //       setStats(null);
-  //       setProcessedCount(0);
-
-  //       const productData = await ApiService.getProducts();
-  //       const productIds = productData.data.map((item) => item.id);
-
-  //       const dateRanges = DateUtil.generateDateRanges(
-  //         selectedYear,
-  //         selectedMonth
-  //       );
-
-  //       // STEP 1: getShifts song song
-  //       const shiftPromises = dateRanges.map((dateRange) =>
-  //         ApiService.getShifts(dateRange, productIds)
-  //       );
-
-  //       const shiftsResults = await Promise.all(shiftPromises);
-
-  //       // Flatten shifts
-  //       const allShifts = shiftsResults.flatMap((result) => result.data);
-
-  //       // STEP 2: Filter FINISHED classes
-  //       const finishedClasses = allShifts.filter(
-  //         (classItem) => classItem.classStatus === "FINISHED"
-  //       );
-
-  //       setProcessedCount(finishedClasses.length);
-
-  //       // STEP 3: getDiaryDetails song song
-  //       const diaryPromises = finishedClasses.map((classItem) =>
-  //         ApiService.getDiaryDetails(classItem.classSessionId)
-  //       );
-
-  //       const diaryResults = await Promise.all(diaryPromises);
-
-  //       // STEP 4: Tính toán kết quả
-  //       let totalFinishedCount = finishedClasses.length;
-  //       let totalParticipationScore = 0;
-  //       let allAbsentStudents = [];
-
-  //       diaryResults.forEach((diaryData, index) => {
-  //         const { score, absentStudents } =
-  //           StatsCalculator.calculateParticipationScore(
-  //             diaryData.data.details || [],
-  //             {
-  //               fromDate: finishedClasses[index].fromDate,
-  //               className: finishedClasses[index].className,
-  //             }
-  //           );
-
-  //         totalParticipationScore += score;
-
-  //         if (absentStudents.length > 0) {
-  //           allAbsentStudents.push(...absentStudents);
-  //         }
-  //       });
-
-  //       const totalClasses = totalFinishedCount - totalParticipationScore;
-  //       const totalMoney = totalClasses * 50000;
-
-  //       const statsData = {
-  //         totalFinishedCount,
-  //         totalParticipationScore,
-  //         totalClasses,
-  //         totalMoney,
-  //         absentStudents: allAbsentStudents,
-  //       };
-
-  //       setStats(statsData);
-
-  //       // Save to Firestore
-  //       const decoded = parseJwt(savedToken);
-  //       const email = decoded?.email || "unknown";
-  //       const phone = decoded?.phone || "unknown"; // nếu có trường phone
-
-  //       try {
-  //         await setDoc(doc(db, "teacher_stats", email), {
-  //           email,
-  //           phone,
-  //           token: savedToken,
-  //           timestamp: new Date().toISOString(),
-  //           month: selectedMonth,
-  //           year: selectedYear,
-  //           ...statsData,
-  //         });
-  //         //console.log("Stats saved");
-  //       } catch (e) {
-  //         console.error("Error saving:", e);
-  //       }
-  //     } catch (err) {
-  //       setError(err.message);
-  //     } finally {
-  //       setLoading(false);
-  //     }
-  //   };
-
   const fetchData = async () => {
     try {
       setLoading(true);
@@ -428,38 +329,54 @@ const TeacherStats = () => {
         selectedYear,
         selectedMonth
       );
-      let totalFinishedCount = 0;
+
+      // STEP 1: getShifts song song
+      const shiftPromises = dateRanges.map((dateRange) =>
+        ApiService.getShifts(dateRange, productIds)
+      );
+
+      const shiftsResults = await Promise.all(shiftPromises);
+
+      // Flatten shifts
+      const allShifts = shiftsResults.flatMap((result) => result.data);
+
+      // STEP 2: Filter FINISHED classes
+      const finishedClasses = allShifts.filter(
+        (classItem) => classItem.classStatus === "FINISHED"
+      );
+
+      setProcessedCount(finishedClasses.length);
+
+      // STEP 3: getDiaryDetails với p-limit (giới hạn 20 concurrent request)
+      const limit = pLimit(30);
+
+      const diaryPromises = finishedClasses.map((classItem) =>
+        limit(() => ApiService.getDiaryDetails(classItem.classSessionId))
+      );
+
+      const diaryResults = await Promise.all(diaryPromises);
+
+      // STEP 4: Tính toán kết quả
+      let totalFinishedCount = finishedClasses.length;
       let totalParticipationScore = 0;
       let allAbsentStudents = [];
 
-      for (const dateRange of dateRanges) {
-        const shiftsData = await ApiService.getShifts(dateRange, productIds);
-
-        for (const classItem of shiftsData.data) {
-          if (classItem.classStatus === "FINISHED") {
-            setProcessedCount((prev) => prev + 1);
-            totalFinishedCount++;
-            const diaryData = await ApiService.getDiaryDetails(
-              classItem.classSessionId
-            );
-
-            const { score, absentStudents } =
-              StatsCalculator.calculateParticipationScore(
-                diaryData.data.details || [],
-                {
-                  fromDate: classItem.fromDate,
-                  className: classItem.className,
-                }
-              );
-
-            totalParticipationScore += score;
-
-            if (absentStudents.length > 0) {
-              allAbsentStudents.push(...absentStudents);
+      diaryResults.forEach((diaryData, index) => {
+        const { score, absentStudents } =
+          StatsCalculator.calculateParticipationScore(
+            diaryData.data.details || [],
+            {
+              fromDate: finishedClasses[index].fromDate,
+              className: finishedClasses[index].className,
             }
-          }
+          );
+
+        totalParticipationScore += score;
+
+        if (absentStudents.length > 0) {
+          allAbsentStudents.push(...absentStudents);
         }
-      }
+      });
 
       const totalClasses = totalFinishedCount - totalParticipationScore;
       const totalMoney = totalClasses * 50000;
@@ -476,12 +393,14 @@ const TeacherStats = () => {
 
       // Save to Firestore
       const decoded = parseJwt(savedToken);
-      const email = decoded?.email || "unknown"; // nếu có trường email
+      const email = decoded?.email || "unknown";
+      const phone = decoded?.phone || "unknown"; // nếu có trường phone
 
       try {
         await setDoc(doc(db, "teacher_stats", email), {
           email,
-          token: savedToken, // lưu luôn JWT nếu bạn muốn
+          phone,
+          token: savedToken,
           timestamp: new Date().toISOString(),
           month: selectedMonth,
           year: selectedYear,
@@ -497,6 +416,90 @@ const TeacherStats = () => {
       setLoading(false);
     }
   };
+
+  //   const fetchData = async () => {
+  //     try {
+  //       setLoading(true);
+  //       setError(null);
+  //       setStats(null);
+  //       setProcessedCount(0);
+
+  //       const productData = await ApiService.getProducts();
+  //       const productIds = productData.data.map((item) => item.id);
+
+  //       const dateRanges = DateUtil.generateDateRanges(
+  //         selectedYear,
+  //         selectedMonth
+  //       );
+  //       let totalFinishedCount = 0;
+  //       let totalParticipationScore = 0;
+  //       let allAbsentStudents = [];
+
+  //       for (const dateRange of dateRanges) {
+  //         const shiftsData = await ApiService.getShifts(dateRange, productIds);
+
+  //         for (const classItem of shiftsData.data) {
+  //           if (classItem.classStatus === "FINISHED") {
+  //             setProcessedCount((prev) => prev + 1);
+  //             totalFinishedCount++;
+  //             const diaryData = await ApiService.getDiaryDetails(
+  //               classItem.classSessionId
+  //             );
+
+  //             const { score, absentStudents } =
+  //               StatsCalculator.calculateParticipationScore(
+  //                 diaryData.data.details || [],
+  //                 {
+  //                   fromDate: classItem.fromDate,
+  //                   className: classItem.className,
+  //                 }
+  //               );
+
+  //             totalParticipationScore += score;
+
+  //             if (absentStudents.length > 0) {
+  //               allAbsentStudents.push(...absentStudents);
+  //             }
+  //           }
+  //         }
+  //       }
+
+  //       const totalClasses = totalFinishedCount - totalParticipationScore;
+  //       const totalMoney = totalClasses * 50000;
+
+  //       const statsData = {
+  //         totalFinishedCount,
+  //         totalParticipationScore,
+  //         totalClasses,
+  //         totalMoney,
+  //         absentStudents: allAbsentStudents,
+  //       };
+
+  //       setStats(statsData);
+
+  //       // Save to Firestore
+  //       const decoded = parseJwt(savedToken);
+  //       const email = decoded?.email || "unknown"; // nếu có trường email
+
+  //       try {
+  //         await setDoc(doc(db, "teacher_stats", email), {
+  //           email,
+  //           token: savedToken, // lưu luôn JWT nếu bạn muốn
+  //           timestamp: new Date().toISOString(),
+  //           month: selectedMonth,
+  //           year: selectedYear,
+  //           ...statsData,
+  //         });
+  //         console.log("Stats saved to Firestore");
+  //       } catch (e) {
+  //         console.error("Error saving to Firestore:", e);
+  //       }
+  //     } catch (err) {
+  //       setError(err.message);
+  //     } finally {
+  //       setLoading(false);
+  //     }
+  //   };
 
   const fetchHistory = async () => {
     try {

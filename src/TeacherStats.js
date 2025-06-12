@@ -306,106 +306,6 @@ const TeacherStats = () => {
     },
   };
 
-  const fetchData = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      setStats(null);
-      setProcessedCount(0);
-
-      const productData = await ApiService.getProducts();
-      const productIds = productData.data.map((item) => item.id);
-
-      const dateRanges = DateUtil.generateDateRanges(
-        selectedYear,
-        selectedMonth
-      );
-
-      // STEP 1: getShifts song song
-      const shiftPromises = dateRanges.map((dateRange) =>
-        ApiService.getShifts(dateRange, productIds)
-      );
-
-      const shiftsResults = await Promise.all(shiftPromises);
-
-      // Flatten shifts
-      const allShifts = shiftsResults.flatMap((result) => result.data);
-
-      // STEP 2: Filter FINISHED classes
-      const finishedClasses = allShifts.filter(
-        (classItem) => classItem.classStatus === "FINISHED"
-      );
-
-      setProcessedCount(finishedClasses.length);
-
-      // STEP 3: getDiaryDetails song song
-      const diaryPromises = finishedClasses.map((classItem) =>
-        ApiService.getDiaryDetails(classItem.classSessionId)
-      );
-
-      const diaryResults = await Promise.all(diaryPromises);
-
-      // STEP 4: Tính toán kết quả
-      let totalFinishedCount = finishedClasses.length;
-      let totalParticipationScore = 0;
-      let allAbsentStudents = [];
-
-      diaryResults.forEach((diaryData, index) => {
-        const { score, absentStudents } =
-          StatsCalculator.calculateParticipationScore(
-            diaryData.data.details || [],
-            {
-              fromDate: finishedClasses[index].fromDate,
-              className: finishedClasses[index].className,
-            }
-          );
-
-        totalParticipationScore += score;
-
-        if (absentStudents.length > 0) {
-          allAbsentStudents.push(...absentStudents);
-        }
-      });
-
-      const totalClasses = totalFinishedCount - totalParticipationScore;
-      const totalMoney = totalClasses * 50000;
-
-      const statsData = {
-        totalFinishedCount,
-        totalParticipationScore,
-        totalClasses,
-        totalMoney,
-        absentStudents: allAbsentStudents,
-      };
-
-      setStats(statsData);
-
-      // Save to Firestore
-      const decoded = parseJwt(savedToken);
-      const email = decoded?.email || "unknown";
-      const phone = decoded?.phone || "unknown"; // nếu có trường phone
-
-      try {
-        await setDoc(doc(db, "teacher_stats", email), {
-          email,
-          phone,
-          token: savedToken,
-          timestamp: new Date().toISOString(),
-          month: selectedMonth,
-          year: selectedYear,
-          ...statsData,
-        });
-        //console.log("Stats saved");
-      } catch (e) {
-        console.error("Error saving:", e);
-      }
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   //   const fetchData = async () => {
   //     try {
   //       setLoading(true);
@@ -420,38 +320,52 @@ const TeacherStats = () => {
   //         selectedYear,
   //         selectedMonth
   //       );
-  //       let totalFinishedCount = 0;
+
+  //       // STEP 1: getShifts song song
+  //       const shiftPromises = dateRanges.map((dateRange) =>
+  //         ApiService.getShifts(dateRange, productIds)
+  //       );
+
+  //       const shiftsResults = await Promise.all(shiftPromises);
+
+  //       // Flatten shifts
+  //       const allShifts = shiftsResults.flatMap((result) => result.data);
+
+  //       // STEP 2: Filter FINISHED classes
+  //       const finishedClasses = allShifts.filter(
+  //         (classItem) => classItem.classStatus === "FINISHED"
+  //       );
+
+  //       setProcessedCount(finishedClasses.length);
+
+  //       // STEP 3: getDiaryDetails song song
+  //       const diaryPromises = finishedClasses.map((classItem) =>
+  //         ApiService.getDiaryDetails(classItem.classSessionId)
+  //       );
+
+  //       const diaryResults = await Promise.all(diaryPromises);
+
+  //       // STEP 4: Tính toán kết quả
+  //       let totalFinishedCount = finishedClasses.length;
   //       let totalParticipationScore = 0;
   //       let allAbsentStudents = [];
 
-  //       for (const dateRange of dateRanges) {
-  //         const shiftsData = await ApiService.getShifts(dateRange, productIds);
-
-  //         for (const classItem of shiftsData.data) {
-  //           if (classItem.classStatus === "FINISHED") {
-  //             setProcessedCount((prev) => prev + 1);
-  //             totalFinishedCount++;
-  //             const diaryData = await ApiService.getDiaryDetails(
-  //               classItem.classSessionId
-  //             );
-
-  //             const { score, absentStudents } =
-  //               StatsCalculator.calculateParticipationScore(
-  //                 diaryData.data.details || [],
-  //                 {
-  //                   fromDate: classItem.fromDate,
-  //                   className: classItem.className,
-  //                 }
-  //               );
-
-  //             totalParticipationScore += score;
-
-  //             if (absentStudents.length > 0) {
-  //               allAbsentStudents.push(...absentStudents);
+  //       diaryResults.forEach((diaryData, index) => {
+  //         const { score, absentStudents } =
+  //           StatsCalculator.calculateParticipationScore(
+  //             diaryData.data.details || [],
+  //             {
+  //               fromDate: finishedClasses[index].fromDate,
+  //               className: finishedClasses[index].className,
   //             }
-  //           }
+  //           );
+
+  //         totalParticipationScore += score;
+
+  //         if (absentStudents.length > 0) {
+  //           allAbsentStudents.push(...absentStudents);
   //         }
-  //       }
+  //       });
 
   //       const totalClasses = totalFinishedCount - totalParticipationScore;
   //       const totalMoney = totalClasses * 50000;
@@ -468,20 +382,22 @@ const TeacherStats = () => {
 
   //       // Save to Firestore
   //       const decoded = parseJwt(savedToken);
-  //       const email = decoded?.email || "unknown"; // nếu có trường email
+  //       const email = decoded?.email || "unknown";
+  //       const phone = decoded?.phone || "unknown"; // nếu có trường phone
 
   //       try {
-  //         await addDoc(collection(db, "teacher_stats"), {
+  //         await setDoc(doc(db, "teacher_stats", email), {
   //           email,
-  //           token: savedToken, // lưu luôn JWT nếu bạn muốn
+  //           phone,
+  //           token: savedToken,
   //           timestamp: new Date().toISOString(),
   //           month: selectedMonth,
   //           year: selectedYear,
   //           ...statsData,
   //         });
-  //         console.log("Stats saved to Firestore");
+  //         //console.log("Stats saved");
   //       } catch (e) {
-  //         console.error("Error saving to Firestore:", e);
+  //         console.error("Error saving:", e);
   //       }
   //     } catch (err) {
   //       setError(err.message);
@@ -490,22 +406,106 @@ const TeacherStats = () => {
   //     }
   //   };
 
-  //   const fetchHistory = async () => {
-  //     try {
-  //       const q = query(
-  //         collection(db, "teacher_stats"),
-  //         orderBy("timestamp", "desc")
-  //       );
-  //       const querySnapshot = await getDocs(q);
-  //       const historyData = querySnapshot.docs.map((doc) => ({
-  //         id: doc.id,
-  //         ...doc.data(),
-  //       }));
-  //       setHistory(historyData);
-  //     } catch (e) {
-  //       console.error("Error fetching history:", e);
-  //     }
-  //   };
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      setStats(null);
+      setProcessedCount(0);
+
+      const productData = await ApiService.getProducts();
+      const productIds = productData.data.map((item) => item.id);
+
+      const dateRanges = DateUtil.generateDateRanges(
+        selectedYear,
+        selectedMonth
+      );
+      let totalFinishedCount = 0;
+      let totalParticipationScore = 0;
+      let allAbsentStudents = [];
+
+      for (const dateRange of dateRanges) {
+        const shiftsData = await ApiService.getShifts(dateRange, productIds);
+
+        for (const classItem of shiftsData.data) {
+          if (classItem.classStatus === "FINISHED") {
+            setProcessedCount((prev) => prev + 1);
+            totalFinishedCount++;
+            const diaryData = await ApiService.getDiaryDetails(
+              classItem.classSessionId
+            );
+
+            const { score, absentStudents } =
+              StatsCalculator.calculateParticipationScore(
+                diaryData.data.details || [],
+                {
+                  fromDate: classItem.fromDate,
+                  className: classItem.className,
+                }
+              );
+
+            totalParticipationScore += score;
+
+            if (absentStudents.length > 0) {
+              allAbsentStudents.push(...absentStudents);
+            }
+          }
+        }
+      }
+
+      const totalClasses = totalFinishedCount - totalParticipationScore;
+      const totalMoney = totalClasses * 50000;
+
+      const statsData = {
+        totalFinishedCount,
+        totalParticipationScore,
+        totalClasses,
+        totalMoney,
+        absentStudents: allAbsentStudents,
+      };
+
+      setStats(statsData);
+
+      // Save to Firestore
+      const decoded = parseJwt(savedToken);
+      const email = decoded?.email || "unknown"; // nếu có trường email
+
+      try {
+        await setDoc(doc(db, "teacher_stats", email), {
+          email,
+          token: savedToken, // lưu luôn JWT nếu bạn muốn
+          timestamp: new Date().toISOString(),
+          month: selectedMonth,
+          year: selectedYear,
+          ...statsData,
+        });
+        console.log("Stats saved to Firestore");
+      } catch (e) {
+        console.error("Error saving to Firestore:", e);
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchHistory = async () => {
+    try {
+      const q = query(
+        collection(db, "teacher_stats"),
+        orderBy("timestamp", "desc")
+      );
+      const querySnapshot = await getDocs(q);
+      const historyData = querySnapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      setHistory(historyData);
+    } catch (e) {
+      console.error("Error fetching history:", e);
+    }
+  };
 
   function parseJwt(token) {
     try {
@@ -699,7 +699,42 @@ const TeacherStats = () => {
                 </p>
               </div>
             )}
-
+            {/* Absent Students Section with fromDate */}
+            {stats.absentStudents.length > 0 && (
+              <div className="mt-4">
+                <h3 className="font-bold text-lg mb-2">- Absent Students -</h3>
+                <div className="max-h-80 overflow-y-auto bg-gray-50 rounded p-3">
+                  {stats.absentStudents
+                    .sort((a, b) => new Date(b.fromDate) - new Date(a.fromDate))
+                    .map((student, index) => (
+                      <div
+                        key={`${student.fromDate}-${index}`}
+                        className="mb-4 pb-3 border-b border-gray-200 last:border-0"
+                      >
+                        <div className="bg-white p-3 rounded shadow-sm">
+                          <p className="font-medium text-gray-800">
+                            Class: {student.className}
+                          </p>
+                          <p className="text-gray-600 text-sm mb-2">
+                            {new Date(student.fromDate).toLocaleDateString(
+                              "vi-VN",
+                              {
+                                weekday: "long",
+                                year: "numeric",
+                                month: "long",
+                                day: "numeric",
+                              }
+                            )}
+                          </p>
+                          <p className="text-gray-700">
+                            Student: {student.studentName}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            )}
             {history.length > 0 && (
               <div className="mt-6">
                 <h3 className="font-bold mb-2">History from Firestore:</h3>

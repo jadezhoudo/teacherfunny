@@ -165,6 +165,7 @@ const TeacherStats = () => {
     const decoded = parseJwt(savedToken);
     const email = decoded?.email || "unknown"; // nếu có trường email
     const phone = decoded?.phone || "unknown"; // nếu có trường phone
+    setUserEmail(decoded?.email || "");
 
     try {
       await setDoc(doc(db, "mail_teacher", email), {

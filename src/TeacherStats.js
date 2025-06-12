@@ -53,16 +53,18 @@ const TeacherStats = () => {
     }
   };
 
+  // Hàm SAVE TOKEN:
   const handleSaveToken = () => {
     if (!inputToken || inputToken.trim() === "") {
-      setError("Please enter a valid token");
+      //Console.error("Please enter a token.");
       return;
     }
 
     try {
+      // parse thử để validate
       const decoded = parseJwt(inputToken);
       if (!decoded) {
-        setError("Invalid token format");
+        //Console.error("Invalid JWT.");
         return;
       }
 
@@ -71,12 +73,41 @@ const TeacherStats = () => {
 
       setBearerToken(inputToken);
       setUserEmail(decoded?.email || "");
+
+      //Console.log("Manual token saved successfully.");
+
+      // Optional: close manual input (nếu muốn)
+      //   setShowManualInput(false);
       setInputToken("");
-      setError(null); // Clear any previous errors
     } catch (error) {
-      setError("Error saving token: " + error.message);
+      //Console.error("Error saving manual token:", error);
     }
   };
+
+  //   const handleSaveToken = () => {
+  //     if (!inputToken || inputToken.trim() === "") {
+  //       setError("Please enter a valid token");
+  //       return;
+  //     }
+
+  //     try {
+  //       const decoded = parseJwt(inputToken);
+  //       if (!decoded) {
+  //         setError("Invalid token format");
+  //         return;
+  //       }
+
+  //       localStorage.setItem("teacher_token", inputToken);
+  //       localStorage.setItem("teacher_email", decoded?.email || "");
+
+  //       setBearerToken(inputToken);
+  //       setUserEmail(decoded?.email || "");
+  //       setInputToken("");
+  //       setError(null); // Clear any previous errors
+  //     } catch (error) {
+  //       setError("Error saving token: " + error.message);
+  //     }
+  //   };
 
   const handleDeleteToken = () => {
     localStorage.removeItem("teacher_token");

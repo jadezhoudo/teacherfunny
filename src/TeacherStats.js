@@ -43,7 +43,7 @@ const TeacherStats = () => {
   // Hàm SAVE TOKEN:
   const handleSaveToken = () => {
     if (!inputToken || inputToken.trim() === "") {
-      console.error("Please enter a token.");
+      //Console.error("Please enter a token.");
       return;
     }
 
@@ -51,7 +51,7 @@ const TeacherStats = () => {
       // parse thử để validate
       const decoded = parseJwt(inputToken);
       if (!decoded) {
-        console.error("Invalid JWT.");
+        //Console.error("Invalid JWT.");
         return;
       }
 
@@ -61,13 +61,13 @@ const TeacherStats = () => {
       setBearerToken(inputToken);
       setUserEmail(decoded?.email || "");
 
-      console.log("Manual token saved successfully.");
+      //Console.log("Manual token saved successfully.");
 
       // Optional: close manual input (nếu muốn)
       setShowManualInput(false);
       setInputToken("");
     } catch (error) {
-      console.error("Error saving manual token:", error);
+      //Console.error("Error saving manual token:", error);
     }
   };
 
@@ -80,7 +80,7 @@ const TeacherStats = () => {
     setUserEmail("");
     setInputToken("");
 
-    console.log("Manual token deleted.");
+    //Console.log("Manual token deleted.");
   };
 
   // FIX parseJwt:
@@ -104,7 +104,7 @@ const TeacherStats = () => {
 
   //       return JSON.parse(jsonPayload);
   //     } catch (e) {
-  //       console.error("Invalid JWT", e);
+  //       //Console.error("Invalid JWT", e);
   //       return null;
   //     }
   //   }
@@ -116,7 +116,7 @@ const TeacherStats = () => {
       setBearerToken(savedToken);
       initScreen();
     } else {
-      //console.log("Token not found in localStorage.");
+      ////Console.log("Token not found in localStorage.");
     }
   }, []);
 
@@ -126,7 +126,7 @@ const TeacherStats = () => {
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
 
-      //console.log("Google login success:", user);
+      ////Console.log("Google login success:", user);
 
       // Lưu token + email vào localStorage
       const token = await user.getIdToken();
@@ -136,7 +136,7 @@ const TeacherStats = () => {
       // Set state
       setUserEmail(user.email || "");
     } catch (error) {
-      console.error("Google login error:", error);
+      //Console.error("Google login error:", error);
     }
   };
 
@@ -156,7 +156,7 @@ const TeacherStats = () => {
       // Reload app
       window.location.reload();
     } catch (error) {
-      console.error("Logout error:", error);
+      //Console.error("Logout error:", error);
     }
   };
 
@@ -176,9 +176,9 @@ const TeacherStats = () => {
         month: selectedMonth,
         year: selectedYear,
       });
-      //console.log("Stats saved");
+      ////Console.log("Stats saved");
     } catch (e) {
-      console.error("Error saving:", e);
+      //Console.error("Error saving:", e);
     }
   };
 
@@ -407,9 +407,9 @@ const TeacherStats = () => {
           year: selectedYear,
           ...statsData,
         });
-        console.log("Stats saved to Firestore");
+        //Console.log("Stats saved to Firestore");
       } catch (e) {
-        console.error("Error saving to Firestore:", e);
+        //Console.error("Error saving to Firestore:", e);
       }
     } catch (err) {
       setError(err.message);
@@ -491,9 +491,9 @@ const TeacherStats = () => {
   //           year: selectedYear,
   //           ...statsData,
   //         });
-  //         console.log("Stats saved to Firestore");
+  //         //Console.log("Stats saved to Firestore");
   //       } catch (e) {
-  //         console.error("Error saving to Firestore:", e);
+  //         //Console.error("Error saving to Firestore:", e);
   //       }
   //     } catch (err) {
   //       setError(err.message);
@@ -515,7 +515,7 @@ const TeacherStats = () => {
       }));
       setHistory(historyData);
     } catch (e) {
-      console.error("Error fetching history:", e);
+      //Console.error("Error fetching history:", e);
     }
   };
 
@@ -538,7 +538,7 @@ const TeacherStats = () => {
 
       return JSON.parse(jsonPayload);
     } catch (e) {
-      console.error("Invalid JWT", e);
+      //Console.error("Invalid JWT", e);
       return null;
     }
   }
@@ -686,7 +686,7 @@ const TeacherStats = () => {
             </div> */}
             {error && (
               <div className="text-red-500 mt-4">
-                Error:{" "}
+                Info:{" "}
                 {error === "API error: 401"
                   ? "Please log in to the address: https://teacher.ican.vn \nThen use the extension to access the website."
                   : error === "API error: 403"

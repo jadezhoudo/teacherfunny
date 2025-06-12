@@ -494,7 +494,7 @@ const TeacherStats = () => {
             </div>
 
             {/* Title */}
-            <h1 className="text-4xl font-extrabold text-center mb-10 tracking-tight">
+            <h1 className="text-4xl font-mediumbold text-center mb-10 tracking-tight">
               ⭐ Teacher Statistics ⭐
             </h1>
 

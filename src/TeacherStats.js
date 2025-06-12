@@ -577,30 +577,35 @@ const TeacherStats = () => {
                 ))}
               </select>
             </div>
-            <div className="flex items-center mt-4 mb-2">
-              <label htmlFor="toggleToken" className="mr-2 font-medium text-sm">
-                Use Manual Code
-              </label>
-              <input
-                id="toggleToken"
-                type="checkbox"
-                checked={showTokenInput}
-                onChange={(e) => setShowTokenInput(e.target.checked)}
-                className="toggle-checkbox hidden"
-              />
-              <div
-                onClick={() => setShowTokenInput(!showTokenInput)}
-                className={`w-10 h-5 flex items-center bg-gray-300 rounded-full p-1 cursor-pointer ${
-                  showTokenInput ? "bg-green-400" : "bg-gray-300"
-                }`}
-              >
+            {!userEmail && (
+              <div className="flex items-center mt-4 mb-2">
+                <label
+                  htmlFor="toggleToken"
+                  className="mr-2 font-medium text-sm"
+                >
+                  Use Manual Code
+                </label>
+                <input
+                  id="toggleToken"
+                  type="checkbox"
+                  checked={showTokenInput}
+                  onChange={(e) => setShowTokenInput(e.target.checked)}
+                  className="toggle-checkbox hidden"
+                />
                 <div
-                  className={`bg-white w-4 h-4 rounded-full shadow-md transform duration-300 ease-in-out ${
-                    showTokenInput ? "translate-x-5" : ""
+                  onClick={() => setShowTokenInput(!showTokenInput)}
+                  className={`w-10 h-5 flex items-center bg-gray-300 rounded-full p-1 cursor-pointer ${
+                    showTokenInput ? "bg-green-400" : "bg-gray-300"
                   }`}
-                ></div>
+                >
+                  <div
+                    className={`bg-white w-4 h-4 rounded-full shadow-md transform duration-300 ease-in-out ${
+                      showTokenInput ? "translate-x-5" : ""
+                    }`}
+                  ></div>
+                </div>
               </div>
-            </div>
+            )}
 
             {!bearerToken && !userEmail && showTokenInput && (
               <div className="mt-4 mb-4">
@@ -624,14 +629,16 @@ const TeacherStats = () => {
               <button
                 onClick={fetchData}
                 disabled={loading}
-                className="mt-4 w-full px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-gray-300"
+                className="mt-4 w-full px-4 py-3 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-gray-300"
               >
                 {loading ? "Processing..." : "Calculate Statistics"}
               </button>
             )}
-            <div className="mt-4">
-              <p>Processed count: {processedCount}</p>
-            </div>
+            {processedCount > 0 && (
+              <div className="mt-4">
+                <p>Processed count: {processedCount}</p>
+              </div>
+            )}
             {userEmail ? (
               <div className="mt-4 flex items-center justify-between mb-4 p-2 bg-green-100 text-green-800 rounded">
                 <span>Hello, {userEmail}</span>
@@ -656,14 +663,14 @@ const TeacherStats = () => {
               //     <span className="font-medium">Login with Google</span>
               //   </button>
             )}
-            {bearerToken && (
+            {/* {bearerToken && (
               <button
                 onClick={handleDeleteToken}
                 className="mt-4 w-full px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
               >
                 Delete Code
               </button>
-            )}
+            )} */}
             {/* <button
               onClick={fetchHistory}
               className="mt-2 w-full px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600"
@@ -685,13 +692,28 @@ const TeacherStats = () => {
             )}
             {!bearerToken && (
               <div className="text-red-500 mt-4">
-                Error:{" "}
-                {
-                  "Please log in to the address: https://teacher.ican.vn \nThen use the extension to access the website."
-                }
+                Error: Please log in to the address:{" "}
+                <a
+                  href="https://teacher.ican.vn"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline text-blue-600 hover:text-blue-800"
+                >
+                  https://teacher.ican.vn
+                </a>{" "}
+                <br />
+                Then use the extension:{" "}
+                <a
+                  href="https://chromewebstore.google.com/detail/eihakmhchijandboncdhnjmeoakockoe?utm_source=item-share-cb"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline text-blue-600 hover:text-blue-800"
+                >
+                  Install Extension from Chrome Web Store
+                </a>
               </div>
             )}
-            {stats && (
+            {stats && stats.totalFinishedCount > 0 && (
               <div className="mt-6 space-y-2">
                 <p>
                   <strong>Total FINISHED classes:</strong>{" "}
@@ -784,7 +806,7 @@ const TeacherStats = () => {
         <div className="flex items-center justify-center gap-2">
           <span>©</span>
           <span>2025 Châu Đỗ. All rights reserved.</span>
-          <span>Ver 1.0</span>
+          <span>Ver 2.0</span>
         </div>
       </footer>
     </div>

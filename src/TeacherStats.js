@@ -54,46 +54,17 @@ const TeacherStats = () => {
   };
 
   // Hàm SAVE TOKEN:
-  const handleSaveToken = () => {
-    if (!inputToken || inputToken.trim() === "") {
-      //Console.error("Please enter a token.");
-      return;
-    }
-
-    try {
-      // parse thử để validate
-      const decoded = parseJwt(inputToken);
-      if (!decoded) {
-        //Console.error("Invalid JWT.");
-        return;
-      }
-
-      localStorage.setItem("teacher_token", inputToken);
-      localStorage.setItem("teacher_email", decoded?.email || "");
-
-      setBearerToken(inputToken);
-      setUserEmail(decoded?.email || "");
-
-      //Console.log("Manual token saved successfully.");
-
-      // Optional: close manual input (nếu muốn)
-      //   setShowManualInput(false);
-      setInputToken("");
-    } catch (error) {
-      //Console.error("Error saving manual token:", error);
-    }
-  };
-
   //   const handleSaveToken = () => {
   //     if (!inputToken || inputToken.trim() === "") {
-  //       setError("Please enter a valid token");
+  //       //Console.error("Please enter a token.");
   //       return;
   //     }
 
   //     try {
+  //       // parse thử để validate
   //       const decoded = parseJwt(inputToken);
   //       if (!decoded) {
-  //         setError("Invalid token format");
+  //         //Console.error("Invalid JWT.");
   //         return;
   //       }
 
@@ -102,12 +73,41 @@ const TeacherStats = () => {
 
   //       setBearerToken(inputToken);
   //       setUserEmail(decoded?.email || "");
+
+  //       //Console.log("Manual token saved successfully.");
+
+  //       // Optional: close manual input (nếu muốn)
+  //       //   setShowManualInput(false);
   //       setInputToken("");
-  //       setError(null); // Clear any previous errors
   //     } catch (error) {
-  //       setError("Error saving token: " + error.message);
+  //       //Console.error("Error saving manual token:", error);
   //     }
   //   };
+
+  const handleSaveToken = () => {
+    if (!inputToken || inputToken.trim() === "") {
+      setError("Please enter a valid token");
+      return;
+    }
+
+    try {
+      const decoded = parseJwt(inputToken);
+      if (!decoded) {
+        setError("Invalid token format");
+        return;
+      }
+
+      localStorage.setItem("teacher_token", inputToken);
+      localStorage.setItem("teacher_email", decoded?.email || "");
+
+      setBearerToken(inputToken);
+      setUserEmail(decoded?.email || "");
+      setInputToken("");
+      setError(null); // Clear any previous errors
+    } catch (error) {
+      setError("Error saving token: " + error.message);
+    }
+  };
 
   const handleDeleteToken = () => {
     localStorage.removeItem("teacher_token");
@@ -347,7 +347,7 @@ const TeacherStats = () => {
 
       setProcessedCount(finishedClasses.length);
 
-      const limit = pLimit(30);
+      const limit = pLimit(10); // Limit to 10 concurrent requests
       const diaryPromises = finishedClasses.map((classItem) =>
         limit(() => ApiService.getDiaryDetails(classItem.classSessionId))
       );
@@ -446,7 +446,7 @@ const TeacherStats = () => {
 
       setProcessedCount(finishedClasses.length);
 
-      const limit = pLimit(30);
+      const limit = pLimit(10); // Limit to 10 concurrent requests
       const diaryPromises = finishedClasses.map((classItem) =>
         limit(() => ApiService.getDiaryDetails(classItem.classSessionId))
       );
@@ -827,9 +827,8 @@ const TeacherStats = () => {
       {/* Footer */}
       <footer className="mt-12 text-center text-sm">
         <div className="flex flex-col sm:flex-row items-center justify-center gap-2 text-gray-500">
-          <span>©</span>
-          <span>2025 Châu Đỗ. All rights reserved.</span>
-          <span>• Ver 3.1</span>
+          <span>• Ver 3.2</span>
+          <span>©2025 Châu Đỗ. All rights reserved.</span>
         </div>
       </footer>
     </div>

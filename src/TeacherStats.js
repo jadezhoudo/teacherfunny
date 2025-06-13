@@ -86,7 +86,7 @@ const TeacherStats = () => {
 
   const handleSaveToken = () => {
     if (!inputToken || inputToken.trim() === "") {
-      setError("Please enter a valid token");
+      setError("Please enter a valid code");
       return;
     }
 

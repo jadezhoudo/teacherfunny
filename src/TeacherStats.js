@@ -347,7 +347,7 @@ const TeacherStats = () => {
 
       setProcessedCount(finishedClasses.length);
 
-      const limit = pLimit(10); // Limit to 10 concurrent requests
+      const limit = pLimit(5); // Limit to 10 concurrent requests
       const diaryPromises = finishedClasses.map((classItem) =>
         limit(() => ApiService.getDiaryDetails(classItem.classSessionId))
       );
@@ -446,7 +446,7 @@ const TeacherStats = () => {
 
       setProcessedCount(finishedClasses.length);
 
-      const limit = pLimit(10); // Limit to 10 concurrent requests
+      const limit = pLimit(5); // Limit to 10 concurrent requests
       const diaryPromises = finishedClasses.map((classItem) =>
         limit(() => ApiService.getDiaryDetails(classItem.classSessionId))
       );

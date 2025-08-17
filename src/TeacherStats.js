@@ -30,8 +30,14 @@ const TeacherStats = () => {
 
   // NEW: Tab state + Date Range state
   const [activeTab, setActiveTab] = useState("month"); // 'month' | 'daterange'
-  const [customStartDate, setCustomStartDate] = useState(""); // Fixed: Added missing state
-  const [customEndDate, setCustomEndDate] = useState(""); // Fixed: Added missing state
+  const [customStartDate, setCustomStartDate] = useState(() => {
+    const today = new Date();
+    return today.toISOString().split("T")[0]; // Format: YYYY-MM-DD
+  }); // Default to today
+  const [customEndDate, setCustomEndDate] = useState(() => {
+    const today = new Date();
+    return today.toISOString().split("T")[0]; // Format: YYYY-MM-DD
+  }); // Default to today
 
   // Fixed: Added missing parseJwt function
   const parseJwt = (token) => {
@@ -252,6 +258,35 @@ const TeacherStats = () => {
 
       return ranges;
     },
+
+    // NEW: Generate date ranges for custom date range (similar to monthly logic)
+    generateCustomDateRanges(startDate, endDate) {
+      const ranges = [];
+      let currentDate = new Date(startDate);
+      const finalEndDate = new Date(endDate);
+
+      while (currentDate <= finalEndDate) {
+        const toDate = new Date(currentDate);
+        toDate.setDate(toDate.getDate() + 6); // 7-day chunks
+
+        if (toDate > finalEndDate) {
+          toDate.setTime(finalEndDate.getTime());
+        } else {
+          toDate.setHours(23, 59, 59, 999);
+        }
+
+        ranges.push({
+          from: currentDate.toISOString(),
+          to: toDate.toISOString(),
+        });
+
+        currentDate = new Date(toDate);
+        currentDate.setDate(currentDate.getDate() + 1);
+        currentDate.setHours(0, 0, 0, 0);
+      }
+
+      return ranges;
+    },
   };
 
   const StatsCalculator = {
@@ -419,6 +454,24 @@ const TeacherStats = () => {
       return;
     }
 
+    // Validate date range
+    const startDate = new Date(customStartDate);
+    const endDate = new Date(customEndDate);
+
+    if (startDate > endDate) {
+      setError("Start date cannot be after end date.");
+      return;
+    }
+
+    // Check if date range is not too large (e.g., more than 1 year)
+    const daysDiff = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
+    if (daysDiff > 365) {
+      setError(
+        "Date range cannot exceed 1 year. Please select a smaller range."
+      );
+      return;
+    }
+
     try {
       setLoading(true);
       setError(null);
@@ -434,19 +487,56 @@ const TeacherStats = () => {
       const productData = await ApiService.getProducts();
       const productIds = productData.data.map((item) => item.id);
 
-      const dateRange = {
-        from: new Date(customStartDate).toISOString(),
-        to: new Date(customEndDate + "T23:59:59.999Z").toISOString(), // Fixed: Ensure end date includes full day
-      };
+      // Use the same logic as monthly: split into smaller date ranges
+      const dateRanges = DateUtil.generateCustomDateRanges(startDate, endDate);
 
-      const shiftsData = await ApiService.getShifts(dateRange, productIds);
-      const finishedClasses = shiftsData.data.filter(
+      console.log("Generated date ranges:", dateRanges);
+      console.log("Total date ranges:", dateRanges.length);
+
+      // Fetch shifts for each date range (similar to monthly approach)
+      const shiftPromises = dateRanges.map((dateRange, index) => {
+        console.log(`Fetching range ${index + 1}:`, dateRange);
+        return ApiService.getShifts(dateRange, productIds);
+      });
+
+      const shiftsResults = await Promise.all(shiftPromises);
+      console.log("Shifts results:", shiftsResults);
+
+      const allShifts = shiftsResults.flatMap((result) => result.data);
+      console.log("All shifts:", allShifts);
+      console.log("Total shifts found:", allShifts.length);
+
+      const finishedClasses = allShifts.filter(
         (classItem) => classItem.classStatus === "FINISHED"
       );
+      console.log("Finished classes:", finishedClasses);
+      console.log("Total finished classes:", finishedClasses.length);
 
       setProcessedCount(finishedClasses.length);
 
-      const limit = pLimit(5); // Limit to 10 concurrent requests
+      if (finishedClasses.length === 0) {
+        setStats({
+          totalFinishedCount: 0,
+          totalParticipationScore: 0,
+          totalClasses: 0,
+          totalMoney: 0,
+          absentStudents: [],
+        });
+
+        // More detailed error message
+        if (allShifts.length === 0) {
+          setError(
+            `No shifts found in the selected date range (${customStartDate} to ${customEndDate}). This might be due to:\n1. No classes scheduled in this period\n2. API limitation with large date ranges\n3. Date format issues`
+          );
+        } else {
+          setError(
+            `Found ${allShifts.length} shifts but none are FINISHED. Classes might be in other statuses (ACTIVE, CANCELLED, etc.)`
+          );
+        }
+        return;
+      }
+
+      const limit = pLimit(5); // Limit to 5 concurrent requests
       const diaryPromises = finishedClasses.map((classItem) =>
         limit(() => ApiService.getDiaryDetails(classItem.classSessionId))
       );
@@ -458,19 +548,21 @@ const TeacherStats = () => {
       let allAbsentStudents = [];
 
       diaryResults.forEach((diaryData, index) => {
-        const { score, absentStudents } =
-          StatsCalculator.calculateParticipationScore(
-            diaryData.data.details || [],
-            {
-              fromDate: finishedClasses[index].fromDate,
-              className: finishedClasses[index].className,
-            }
-          );
+        if (diaryData && diaryData.data && diaryData.data.details) {
+          const { score, absentStudents } =
+            StatsCalculator.calculateParticipationScore(
+              diaryData.data.details,
+              {
+                fromDate: finishedClasses[index].fromDate,
+                className: finishedClasses[index].className,
+              }
+            );
 
-        totalParticipationScore += score;
+          totalParticipationScore += score;
 
-        if (absentStudents.length > 0) {
-          allAbsentStudents.push(...absentStudents);
+          if (absentStudents.length > 0) {
+            allAbsentStudents.push(...absentStudents);
+          }
         }
       });
 
@@ -486,8 +578,37 @@ const TeacherStats = () => {
       };
 
       setStats(statsData);
+
+      // Save to Firestore for date range queries
+      const savedToken = localStorage.getItem("teacher_token");
+      const decoded = parseJwt(savedToken);
+      const email = decoded?.email || "unknown";
+      const phone = decoded?.phone || "unknown";
+
+      try {
+        await setDoc(doc(db, "teacher_stats_date_range", email), {
+          email,
+          phone,
+          token: savedToken,
+          timestamp: new Date().toISOString(),
+          startDate: customStartDate,
+          endDate: customEndDate,
+          ...statsData,
+        });
+      } catch (e) {
+        console.error("Error saving date range stats to Firestore:", e);
+      }
     } catch (err) {
-      setError(err.message);
+      console.error("Error in fetchDataByDateRange:", err);
+      if (err.message.includes("401")) {
+        setError("Authentication failed. Please check your token.");
+      } else if (err.message.includes("403")) {
+        setError("Access denied. Please reload the page.");
+      } else if (err.message.includes("429")) {
+        setError("Too many requests. Please wait a moment and try again.");
+      } else {
+        setError(`Error fetching data: ${err.message}`);
+      }
     } finally {
       setLoading(false);
     }
@@ -620,6 +741,7 @@ const TeacherStats = () => {
                       type="date"
                       value={customStartDate}
                       onChange={(e) => setCustomStartDate(e.target.value)}
+                      max={new Date().toISOString().split("T")[0]}
                       className="w-full px-3 py-3 border rounded-lg focus:ring focus:ring-blue-200 bg-inherit"
                     />
                   </div>
@@ -631,18 +753,92 @@ const TeacherStats = () => {
                       type="date"
                       value={customEndDate}
                       onChange={(e) => setCustomEndDate(e.target.value)}
+                      max={new Date().toISOString().split("T")[0]}
                       className="w-full px-3 py-3 border rounded-lg focus:ring focus:ring-blue-200 bg-inherit"
                     />
                   </div>
+
+                  {/* Reset to today button */}
+                  <div className="flex justify-center">
+                    <button
+                      onClick={() => {
+                        const today = new Date().toISOString().split("T")[0];
+                        setCustomStartDate(today);
+                        setCustomEndDate(today);
+                      }}
+                      className="px-4 py-2 text-sm bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors"
+                    >
+                      Reset to Today
+                    </button>
+                  </div>
+
+                  {/* Date range info */}
+                  {customStartDate && customEndDate && (
+                    <div
+                      className={`p-3 rounded-lg text-sm ${
+                        isDarkMode
+                          ? "bg-gray-700 text-gray-300"
+                          : "bg-blue-50 text-blue-800"
+                      }`}
+                    >
+                      <p className="font-medium">Selected Date Range:</p>
+                      <p>
+                        {new Date(customStartDate).toLocaleDateString("vi-VN")}
+                        {" → "}
+                        {new Date(customEndDate).toLocaleDateString("vi-VN")}
+                      </p>
+                      {(() => {
+                        const start = new Date(customStartDate);
+                        const end = new Date(customEndDate);
+                        const days =
+                          Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
+                        return (
+                          <p className="text-xs mt-1">
+                            Total: {days} day{days !== 1 ? "s" : ""}
+                          </p>
+                        );
+                      })()}
+                    </div>
+                  )}
                 </div>
 
                 {bearerToken && (
                   <button
                     onClick={fetchDataByDateRange}
                     disabled={loading}
-                    className="w-full px-5 py-3 bg-blue-600 text-white rounded-lg text-lg font-semibold shadow hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                    className={`w-full px-5 py-3 rounded-lg text-lg font-semibold shadow transition-colors ${
+                      loading
+                        ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                        : "bg-blue-600 text-white hover:bg-blue-700"
+                    }`}
                   >
-                    {loading ? "Processing..." : "Calculate Statistics"}
+                    {loading ? (
+                      <span className="flex items-center justify-center">
+                        <svg
+                          className="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
+                          xmlns="http://www.w3.org/2000/svg"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                        >
+                          <circle
+                            className="opacity-25"
+                            cx="12"
+                            cy="12"
+                            r="10"
+                            stroke="currentColor"
+                            strokeWidth="4"
+                          ></circle>
+                          <path
+                            className="opacity-75"
+                            fill="currentColor"
+                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                          ></path>
+                        </svg>
+                        Processing Date Range...
+                      </span>
+                    ) : (
+                      "Calculate Statistics for Date Range"
+                    )}
                   </button>
                 )}
               </>
@@ -697,6 +893,36 @@ const TeacherStats = () => {
                 Processed count: {processedCount}
               </div>
             )}
+
+            {/* Debug info for date range */}
+            {/* {activeTab === "range" && customStartDate && customEndDate && (
+              <div className="mt-4 p-3 bg-gray-100 rounded-lg text-sm">
+                <p className="font-medium text-gray-700">Debug Info:</p>
+                <p className="text-gray-600">
+                  Start: {customStartDate} | End: {customEndDate}
+                </p>
+                <p className="text-gray-600">
+                  Total days:{" "}
+                  {(() => {
+                    const start = new Date(customStartDate);
+                    const end = new Date(customEndDate);
+                    return Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
+                  })()}
+                </p>
+                <p className="text-gray-600">
+                  Date ranges:{" "}
+                  {(() => {
+                    const start = new Date(customStartDate);
+                    const end = new Date(customEndDate);
+                    const ranges = DateUtil.generateCustomDateRanges(
+                      start,
+                      end
+                    );
+                    return ranges.length;
+                  })()}
+                </p>
+              </div>
+            )} */}
 
             {/* User Email + Logout */}
             {userEmail && (
@@ -760,21 +986,59 @@ const TeacherStats = () => {
             {/* Stats */}
             {stats && stats.totalFinishedCount > 0 && (
               <div className="mt-8 space-y-2">
-                <p>
-                  <strong>Total FINISHED classes:</strong>{" "}
-                  {stats.totalFinishedCount}
-                </p>
-                <p>
-                  <strong>Total absences:</strong>{" "}
-                  {stats.totalParticipationScore}
-                </p>
-                <p>
-                  <strong>Total effective classes:</strong> {stats.totalClasses}
-                </p>
-                <p>
-                  <strong>Total amount:</strong>{" "}
-                  {StatsCalculator.formatCurrency(stats.totalMoney)}
-                </p>
+                <div
+                  className={`p-4 rounded-lg ${
+                    isDarkMode
+                      ? "bg-gray-700 border border-gray-600"
+                      : "bg-blue-50 border border-blue-200"
+                  }`}
+                >
+                  <h3 className="font-bold text-lg mb-3 text-center">
+                    📊 Statistics Summary
+                  </h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="text-center">
+                      <p className="text-2xl font-bold text-blue-600">
+                        {stats.totalFinishedCount}
+                      </p>
+                      <p className="text-sm text-gray-600">Total Classes</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-2xl font-bold text-red-600">
+                        {stats.totalParticipationScore}
+                      </p>
+                      <p className="text-sm text-gray-600">Absences</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-2xl font-bold text-green-600">
+                        {stats.totalClasses}
+                      </p>
+                      <p className="text-sm text-gray-600">Effective Classes</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-2xl font-bold text-purple-600">
+                        {StatsCalculator.formatCurrency(stats.totalMoney)}
+                      </p>
+                      <p className="text-sm text-gray-600">Total Amount</p>
+                    </div>
+                  </div>
+
+                  {/* Date range info for stats */}
+                  {activeTab === "range" &&
+                    customStartDate &&
+                    customEndDate && (
+                      <div className="mt-4 pt-3 border-t border-gray-300 text-center text-sm text-gray-600">
+                        <p>
+                          Period:{" "}
+                          {new Date(customStartDate).toLocaleDateString(
+                            "vi-VN"
+                          )}{" "}
+                          -{" "}
+                          {new Date(customEndDate).toLocaleDateString("vi-VN")}
+                        </p>
+                      </div>
+                    )}
+                </div>
               </div>
             )}
 
@@ -827,7 +1091,7 @@ const TeacherStats = () => {
       {/* Footer */}
       <footer className="mt-12 text-center text-sm">
         <div className="flex flex-col sm:flex-row items-center justify-center gap-2 text-gray-500">
-          <span>• Ver 3.2</span>
+          <span>• Ver 3.3</span>
           <span>©2025 Châu Đỗ. All rights reserved.</span>
         </div>
       </footer>

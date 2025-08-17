@@ -759,7 +759,7 @@ const TeacherStats = () => {
                   </div>
 
                   {/* Reset to today button */}
-                  <div className="flex justify-center">
+                  {/* <div className="flex justify-center">
                     <button
                       onClick={() => {
                         const today = new Date().toISOString().split("T")[0];
@@ -770,7 +770,7 @@ const TeacherStats = () => {
                     >
                       Reset to Today
                     </button>
-                  </div>
+                  </div> */}
 
                   {/* Date range info */}
                   {customStartDate && customEndDate && (

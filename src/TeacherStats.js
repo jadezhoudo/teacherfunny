@@ -9,7 +9,19 @@ import {
   increment,
   serverTimestamp,
   onSnapshot,
+  getDoc,
 } from "firebase/firestore";
+
+// CSS để ẩn thanh scroll
+const scrollbarHideStyles = `
+  .scrollbar-hide {
+    -ms-overflow-style: none;  /* Internet Explorer 10+ */
+    scrollbar-width: none;  /* Firefox */
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;  /* Safari and Chrome */
+  }
+`;
 
 const TeacherStats = () => {
   const [loading, setLoading] = useState(false);
@@ -19,6 +31,7 @@ const TeacherStats = () => {
     totalClasses: 0,
     totalMoney: 0,
     absentStudents: [],
+    studentDetails: [], // NEW: Danh sách chi tiết học viên
   });
 
   const [error, setError] = useState(null);
@@ -27,6 +40,7 @@ const TeacherStats = () => {
   const [bearerToken, setBearerToken] = useState("");
   const [processedCount, setProcessedCount] = useState(0);
   const [history, setHistory] = useState([]);
+
   const [userEmail, setUserEmail] = useState(
     localStorage.getItem("teacher_email") || ""
   );
@@ -35,6 +49,10 @@ const TeacherStats = () => {
   );
   const [showTokenInput, setShowTokenInput] = useState(false);
   const [visitorTotal, setVisitorTotal] = useState(0);
+  const [visitorToday, setVisitorToday] = useState(0);
+  const [visitorDate, setVisitorDate] = useState(
+    new Date().toISOString().split("T")[0]
+  );
 
   // NEW: Tab state + Date Range state
   const [activeTab, setActiveTab] = useState("month"); // 'month' | 'daterange'
@@ -68,34 +86,60 @@ const TeacherStats = () => {
   };
 
   useEffect(() => {
-    const ref = doc(db, "metrics", "visitor_count");
+    const today = new Date().toISOString().split("T")[0];
+    const totalRef = doc(db, "metrics", "visitor_count");
+    const dailyRef = doc(db, "metrics", `visitor_daily_${today}`);
 
-    // realtime listen
-    const unsub = onSnapshot(ref, (snap) => {
+    // Realtime listen cho visitors tổng
+    const unsubTotal = onSnapshot(totalRef, (snap) => {
       setVisitorTotal(snap.data()?.total || 0);
+    });
+
+    // Realtime listen cho visitors theo ngày
+    const unsubDaily = onSnapshot(dailyRef, (snap) => {
+      setVisitorToday(snap.data()?.count || 0);
     });
 
     // đếm mỗi lần xem trang
     countVisitEveryTime();
 
-    return () => unsub();
+    return () => {
+      unsubTotal();
+      unsubDaily();
+    };
   }, []);
 
   const countVisitEveryTime = async () => {
     try {
-      const ref = doc(db, "metrics", "visitor_count");
+      const today = new Date().toISOString().split("T")[0]; // Format: YYYY-MM-DD
+      const totalRef = doc(db, "metrics", "visitor_count");
+      const dailyRef = doc(db, "metrics", `visitor_daily_${today}`);
 
-      // tăng 1 mỗi lần render component
+      // Tăng tổng visitors
       try {
-        await updateDoc(ref, {
+        await updateDoc(totalRef, {
           total: increment(1),
           updatedAt: serverTimestamp(),
         });
       } catch {
-        // nếu doc chưa tồn tại thì tạo mới
         await setDoc(
-          ref,
+          totalRef,
           { total: 1, updatedAt: serverTimestamp() },
+          { merge: true }
+        );
+      }
+
+      // Tăng visitors theo ngày
+      try {
+        await updateDoc(dailyRef, {
+          count: increment(1),
+          date: today,
+          updatedAt: serverTimestamp(),
+        });
+      } catch {
+        await setDoc(
+          dailyRef,
+          { count: 1, date: today, updatedAt: serverTimestamp() },
           { merge: true }
         );
       }
@@ -159,6 +203,17 @@ const TeacherStats = () => {
       setUserEmail(user.email || "");
     } catch (error) {
       setError("Google login failed: " + error.message);
+    }
+  };
+
+  const getVisitorsByDate = async (date) => {
+    try {
+      const dailyRef = doc(db, "metrics", `visitor_daily_${date}`);
+      const snap = await getDoc(dailyRef);
+      return snap.data()?.count || 0;
+    } catch (e) {
+      console.error("Error getting visitors by date:", e);
+      return 0;
     }
   };
 
@@ -430,12 +485,38 @@ const TeacherStats = () => {
       const totalClasses = totalFinishedCount - totalParticipationScore;
       const totalMoney = totalClasses * 50000;
 
+      // NEW: Collect student details for the month
+      let allStudentDetails = [];
+      diaryResults.forEach((diaryData, index) => {
+        if (diaryData && diaryData.data && diaryData.data.details) {
+          const classInfo = finishedClasses[index];
+          diaryData.data.details.forEach((student) => {
+            allStudentDetails.push({
+              studentId: student.studentId,
+              studentName: student.studentName,
+              studentCode: student.studentCode,
+              className: classInfo.className,
+              fromDate: classInfo.fromDate,
+              lessonName: diaryData.data.generalInfo?.lesson || "",
+              curriculumName: diaryData.data.generalInfo?.curriculumName || "",
+              isParticipated: student.isParticipated,
+              rating: student.rating,
+              readingPoint: student.detail?.readingPoint || 0,
+              listeningPoint: student.detail?.listeningPoint || 0,
+              speakingPoint: student.detail?.speakingPoint || 0,
+              writingPoint: student.detail?.writingPoint || 0,
+            });
+          });
+        }
+      });
+
       const statsData = {
         totalFinishedCount,
         totalParticipationScore,
         totalClasses,
         totalMoney,
         absentStudents: allAbsentStudents,
+        studentDetails: allStudentDetails,
       };
 
       setStats(statsData);
@@ -586,12 +667,38 @@ const TeacherStats = () => {
       const totalClasses = totalFinishedCount - totalParticipationScore;
       const totalMoney = totalClasses * 50000;
 
+      // NEW: Collect student details for date range
+      let allStudentDetails = [];
+      diaryResults.forEach((diaryData, index) => {
+        if (diaryData && diaryData.data && diaryData.data.details) {
+          const classInfo = finishedClasses[index];
+          diaryData.data.details.forEach((student) => {
+            allStudentDetails.push({
+              studentId: student.studentId,
+              studentName: student.studentName,
+              studentCode: student.studentCode,
+              className: classInfo.className,
+              fromDate: classInfo.fromDate,
+              lessonName: diaryData.data.generalInfo?.lesson || "",
+              curriculumName: diaryData.data.generalInfo?.curriculumName || "",
+              isParticipated: student.isParticipated,
+              rating: student.rating,
+              readingPoint: student.detail?.readingPoint || 0,
+              listeningPoint: student.detail?.listeningPoint || 0,
+              speakingPoint: student.detail?.speakingPoint || 0,
+              writingPoint: student.detail?.writingPoint || 0,
+            });
+          });
+        }
+      });
+
       const statsData = {
         totalFinishedCount,
         totalParticipationScore,
         totalClasses,
         totalMoney,
         absentStudents: allAbsentStudents,
+        studentDetails: allStudentDetails,
       };
 
       setStats(statsData);
@@ -634,648 +741,807 @@ const TeacherStats = () => {
   const [isDarkMode, setIsDarkMode] = useState(false);
 
   return (
-    <div
-      className={`min-h-screen ${
-        isDarkMode
-          ? "bg-gray-900 text-gray-100"
-          : "bg-gradient-to-r from-pink-200 via-pink-100 to-pink-200 text-gray-900"
-      } py-3 flex flex-col justify-center sm:py-6 transition-colors duration-500`}
-    >
-      <div className="relative py-3 sm:max-w-2xl sm:mx-auto">
-        <div
-          className={`relative px-6 py-10 ${
-            isDarkMode ? "bg-gray-800" : "bg-white"
-          } mx-4 md:mx-0 shadow-xl rounded-3xl sm:p-12 transition-colors duration-500`}
-        >
-          <div className="max-w-md mx-auto">
-            {/* Light / Dark Toggle */}
-            <div className="flex justify-end mb-6">
-              <button
-                onClick={() => setIsDarkMode(!isDarkMode)}
-                className={`px-3 py-1 rounded-full text-sm font-medium ${
-                  isDarkMode
-                    ? "bg-yellow-400 text-gray-900"
-                    : "bg-gray-700 text-white"
-                }`}
-              >
-                {isDarkMode ? "☀ Light Mode" : "🌙 Dark Mode"}
-              </button>
-            </div>
+    <>
+      <style>{scrollbarHideStyles}</style>
+      <div
+        className={`min-h-screen ${
+          isDarkMode
+            ? "bg-gray-900 text-gray-100"
+            : "bg-gradient-to-r from-pink-200 via-pink-100 to-pink-200 text-gray-900"
+        } py-3 flex flex-col justify-center sm:py-6 transition-colors duration-500`}
+      >
+        {/* Fixed Dark Mode Button - Floating Bubble */}
+        <div className="fixed top-4 right-4 z-50">
+          <button
+            onClick={() => setIsDarkMode(!isDarkMode)}
+            className={`px-4 py-2 rounded-full text-sm font-medium shadow-lg hover:scale-110 transition-all duration-200 ${
+              isDarkMode
+                ? "bg-yellow-400 text-gray-900 hover:bg-yellow-300"
+                : "bg-blue-700 text-white hover:bg-blue-600"
+            }`}
+          >
+            {isDarkMode ? "☀ Light" : "🌙 Dark"}
+          </button>
+        </div>
 
-            {/* Title */}
-            <h1 className="text-4xl font-extrabold text-center mb-10 tracking-tight">
-              ⭐ Teacher Statistics
-            </h1>
-
-            {/* Tabs */}
-            <div
-              className={`flex mb-8 shadow rounded-lg overflow-hidden border ${
-                isDarkMode ? "border-gray-700" : "border-gray-200"
-              }`}
-            >
-              <button
-                onClick={() => setActiveTab("month")}
-                className={`flex-1 px-4 py-3 text-lg font-medium transition-colors duration-200 ${
-                  activeTab === "month"
-                    ? "bg-blue-600 text-white"
-                    : isDarkMode
-                    ? "bg-gray-700 text-gray-300 hover:bg-gray-600"
-                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                }`}
-              >
-                By Month
-              </button>
-              <button
-                onClick={() => setActiveTab("range")}
-                className={`flex-1 px-4 py-3 text-lg font-medium transition-colors duration-200 ${
-                  activeTab === "range"
-                    ? "bg-blue-600 text-white"
-                    : isDarkMode
-                    ? "bg-gray-700 text-gray-300 hover:bg-gray-600"
-                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                }`}
-              >
-                By Date Range
-              </button>
-            </div>
-
-            {/* Tab Content */}
-            {activeTab === "month" && (
-              <>
-                <div className="flex flex-col sm:flex-row gap-4 mb-6">
-                  <select
-                    value={selectedMonth}
-                    onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
-                    className="flex-1 px-3 py-3 border rounded-lg focus:ring focus:ring-blue-200 bg-inherit"
+        <div className="relative py-3 sm:max-w-4xl lg:max-w-5xl xl:max-w-6xl sm:mx-auto">
+          <div
+            className={`relative px-4 py-6 ${
+              isDarkMode ? "bg-gray-800/50" : "bg-white/50"
+            } mx-4 md:mx-0 shadow-xl rounded-3xl sm:p-8 lg:p-10 transition-colors duration-500 backdrop-blur-sm`}
+          >
+            <div className="max-w-6xl lg:max-w-7xl xl:max-w-8xl mx-auto">
+              {/* NEW LAYOUT: Grid 2x2 for 4 main sections */}
+              <div className="">
+                {/* Grid Layout: 2x2 */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6">
+                  {/* Section 1: Teacher Statistics Dashboard (Top-Left) - VỚI TABS VÀ DATE SELECTION */}
+                  <div
+                    className={`p-4 lg:p-6 rounded-lg shadow-lg ${
+                      isDarkMode
+                        ? "bg-gray-700 border border-gray-600"
+                        : "bg-white border border-gray-200"
+                    }`}
                   >
-                    {Array.from({ length: 12 }, (_, i) => i + 1).map(
-                      (month) => (
-                        <option key={month} value={month}>
-                          {new Date(2000, month - 1).toLocaleString("default", {
-                            month: "long",
-                          })}
-                        </option>
-                      )
-                    )}
-                  </select>
-                  <select
-                    value={selectedYear}
-                    onChange={(e) => setSelectedYear(parseInt(e.target.value))}
-                    className="flex-1 px-3 py-3 border rounded-lg focus:ring focus:ring-blue-200 bg-inherit"
-                  >
-                    {[
-                      new Date().getFullYear(),
-                      new Date().getFullYear() - 1,
-                      new Date().getFullYear() - 2,
-                    ].map((year) => (
-                      <option key={year} value={year}>
-                        {year}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                    <h3 className="font-bold text-xl lg:text-2xl mb-4 lg:mb-6 text-center">
+                      ⭐ Teacher Statistics
+                    </h3>
 
-                {bearerToken && (
-                  <button
-                    onClick={fetchData}
-                    disabled={loading}
-                    className="w-full px-5 py-3 bg-blue-600 text-white rounded-lg text-lg font-semibold shadow hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
-                  >
-                    {loading ? "Processing..." : "Calculate Statistics"}
-                  </button>
-                )}
-              </>
-            )}
-
-            {activeTab === "range" && (
-              <>
-                <div className="mb-6 space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium mb-1">
-                      From Date:
-                    </label>
-                    <input
-                      type="date"
-                      value={customStartDate}
-                      onChange={(e) => setCustomStartDate(e.target.value)}
-                      max={new Date().toISOString().split("T")[0]}
-                      className="w-full px-3 py-3 border rounded-lg focus:ring focus:ring-blue-200 bg-inherit"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1">
-                      To Date:
-                    </label>
-                    <input
-                      type="date"
-                      value={customEndDate}
-                      onChange={(e) => setCustomEndDate(e.target.value)}
-                      className="w-full px-3 py-3 border rounded-lg focus:ring focus:ring-blue-200 bg-inherit"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">
-                      ⏰ End time will be set to 23:59:59 of the selected date
-                    </p>
-                  </div>
-
-                  {/* Reset to today button */}
-                  {/* <div className="flex justify-center">
-                    <button
-                      onClick={() => {
-                        const today = new Date().toISOString().split("T")[0];
-                        setCustomStartDate(today);
-                        setCustomEndDate(today);
-                      }}
-                      className="px-4 py-2 text-sm bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors"
-                    >
-                      Reset to Today
-                    </button>
-                  </div> */}
-
-                  {/* Date range info */}
-                  {customStartDate && customEndDate && (
+                    {/* Tabs */}
                     <div
-                      className={`p-3 rounded-lg text-sm ${
-                        isDarkMode
-                          ? "bg-gray-700 text-gray-300"
-                          : "bg-blue-50 text-blue-800"
+                      className={`flex mb-6 shadow rounded-lg overflow-hidden border ${
+                        isDarkMode ? "border-gray-700" : "border-gray-200"
                       }`}
                     >
-                      <p className="font-medium">Selected Date Range:</p>
-                      <p>
-                        {new Date(customStartDate).toLocaleDateString("vi-VN")}{" "}
-                        00:00
-                        {" → "}
-                        {new Date(customEndDate).toLocaleDateString(
-                          "vi-VN"
-                        )}{" "}
-                        23:59
-                      </p>
-                      {(() => {
-                        const start = new Date(customStartDate);
-                        const end = new Date(customEndDate);
-                        const days =
-                          Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
-                        return (
-                          <p className="text-xs mt-1">
-                            Total: {days} day{days !== 1 ? "s" : ""} (from start
-                            of first day to end of last day)
-                          </p>
-                        );
-                      })()}
+                      <button
+                        onClick={() => setActiveTab("month")}
+                        className={`flex-1 px-4 py-3 text-base font-medium transition-colors duration-200 ${
+                          activeTab === "month"
+                            ? "bg-blue-600 text-white"
+                            : isDarkMode
+                            ? "bg-gray-700 text-gray-300 hover:bg-gray-600"
+                            : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                        }`}
+                      >
+                        By Month
+                      </button>
+                      <button
+                        onClick={() => setActiveTab("range")}
+                        className={`flex-1 px-4 py-3 text-base font-medium transition-colors duration-200 ${
+                          activeTab === "range"
+                            ? "bg-blue-600 text-white"
+                            : isDarkMode
+                            ? "bg-gray-700 text-gray-300 hover:bg-gray-200"
+                            : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                        }`}
+                      >
+                        By Date Range
+                      </button>
                     </div>
-                  )}
-                </div>
 
-                {bearerToken && (
-                  <button
-                    onClick={fetchDataByDateRange}
-                    disabled={loading}
-                    className={`w-full px-5 py-3 rounded-lg text-lg font-semibold shadow transition-colors ${
-                      loading
-                        ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-                        : "bg-blue-600 text-white hover:bg-blue-700"
-                    }`}
-                  >
-                    {loading ? (
-                      <span className="flex items-center justify-center">
-                        <svg
-                          className="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
-                          xmlns="http://www.w3.org/2000/svg"
-                          fill="none"
-                          viewBox="0 0 24 24"
+                    {/* Date Selection */}
+                    {activeTab === "month" && (
+                      <div className="flex flex-col sm:flex-row gap-3 mb-4">
+                        <select
+                          value={selectedMonth}
+                          onChange={(e) =>
+                            setSelectedMonth(parseInt(e.target.value))
+                          }
+                          className="flex-1 px-3 py-2 text-sm border rounded-lg focus:ring focus:ring-blue-200 bg-inherit"
                         >
-                          <circle
-                            className="opacity-25"
-                            cx="12"
-                            cy="12"
-                            r="10"
-                            stroke="currentColor"
-                            strokeWidth="4"
-                          ></circle>
-                          <path
-                            className="opacity-75"
-                            fill="currentColor"
-                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                          ></path>
-                        </svg>
-                        Processing Date Range...
-                      </span>
-                    ) : (
-                      "Calculate Statistics for Date Range"
+                          {Array.from({ length: 12 }, (_, i) => i + 1).map(
+                            (month) => (
+                              <option key={month} value={month}>
+                                {new Date(2000, month - 1).toLocaleString(
+                                  "default",
+                                  {
+                                    month: "long",
+                                  }
+                                )}
+                              </option>
+                            )
+                          )}
+                        </select>
+                        <select
+                          value={selectedYear}
+                          onChange={(e) =>
+                            setSelectedYear(parseInt(e.target.value))
+                          }
+                          className="flex-1 px-3 py-2 text-sm border rounded-lg focus:ring focus:ring-blue-200 bg-inherit"
+                        >
+                          {[
+                            new Date().getFullYear(),
+                            new Date().getFullYear() - 1,
+                            new Date().getFullYear() - 2,
+                          ].map((year) => (
+                            <option key={year} value={year}>
+                              {year}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                     )}
-                  </button>
-                )}
-              </>
-            )}
 
-            {/* Manual Token Toggle */}
-            {!userEmail && (
-              <div className="flex items-center mt-6 mb-4">
-                <label
-                  htmlFor="toggleToken"
-                  className="mr-3 text-sm font-medium"
-                >
-                  Use Manual Code
-                </label>
-                <div
-                  onClick={() => setShowTokenInput(!showTokenInput)}
-                  className={`w-12 h-6 flex items-center bg-gray-300 rounded-full p-1 cursor-pointer ${
-                    showTokenInput ? "bg-green-400" : "bg-gray-300"
-                  }`}
-                >
-                  <div
-                    className={`bg-white w-4 h-4 rounded-full shadow transform duration-300 ease-in-out ${
-                      showTokenInput ? "translate-x-6" : ""
-                    }`}
-                  ></div>
-                </div>
-              </div>
-            )}
+                    {/* Date Range Selection */}
+                    {activeTab === "range" && (
+                      <div className="mb-4 space-y-3">
+                        <div>
+                          <label className="block text-xs font-medium mb-1">
+                            From Date:
+                          </label>
+                          <input
+                            type="date"
+                            value={customStartDate}
+                            onChange={(e) => setCustomStartDate(e.target.value)}
+                            max={new Date().toISOString().split("T")[0]}
+                            className="w-full px-3 py-2 text-sm border rounded-lg focus:ring focus:ring-blue-200 bg-inherit"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium mb-1">
+                            To Date:
+                          </label>
+                          <input
+                            type="date"
+                            value={customEndDate}
+                            onChange={(e) => setCustomEndDate(e.target.value)}
+                            className="w-full px-3 py-2 text-sm border rounded-lg focus:ring focus:ring-blue-200 bg-inherit"
+                          />
+                          <p className="text-xs text-gray-500 mt-1">
+                            ⏰ End time will be set to 23:59:59 of the selected
+                            date
+                          </p>
+                        </div>
+                      </div>
+                    )}
 
-            {/* Manual Token Input */}
-            {!bearerToken && !userEmail && showTokenInput && (
-              <div className="mt-4 mb-6 space-y-3">
-                <input
-                  type="text"
-                  value={inputToken}
-                  onChange={(e) => setInputToken(e.target.value)}
-                  placeholder="Enter code here"
-                  className="w-full px-3 py-3 border rounded-lg focus:ring focus:ring-purple-200 bg-inherit"
-                />
-                <button
-                  onClick={handleSaveToken}
-                  className="w-full px-5 py-3 bg-purple-600 text-white rounded-lg font-semibold shadow hover:bg-purple-700"
-                >
-                  Save Code
-                </button>
-              </div>
-            )}
+                    {/* Manual Token Toggle */}
+                    {!userEmail && (
+                      <div className="flex items-center mt-4 mb-3">
+                        <label
+                          htmlFor="toggleToken"
+                          className="mr-3 text-xs font-medium"
+                        >
+                          Use Manual Code
+                        </label>
+                        <div
+                          onClick={() => setShowTokenInput(!showTokenInput)}
+                          className={`w-10 h-5 flex items-center bg-gray-300 rounded-full p-1 cursor-pointer ${
+                            showTokenInput ? "bg-green-400" : "bg-gray-300"
+                          }`}
+                        >
+                          <div
+                            className={`bg-white w-3 h-3 rounded-full shadow transform duration-300 ease-in-out ${
+                              showTokenInput ? "translate-x-5" : ""
+                            }`}
+                          ></div>
+                        </div>
+                      </div>
+                    )}
 
-            {/* Processed count */}
-            {processedCount > 0 && (
-              <div className="mt-4 text-lg font-medium">
-                Processed count: {processedCount}
-              </div>
-            )}
-
-            {/* Debug info for date range */}
-            {/* {activeTab === "range" && customStartDate && customEndDate && (
-              <div className="mt-4 p-3 bg-gray-100 rounded-lg text-sm">
-                <p className="font-medium text-gray-700">Debug Info:</p>
-                <p className="text-gray-600">
-                  Start: {customStartDate} | End: {customEndDate}
-                </p>
-                <p className="text-gray-600">
-                  Total days:{" "}
-                  {(() => {
-                    const start = new Date(customStartDate);
-                    const end = new Date(customEndDate);
-                    return Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
-                  })()}
-                </p>
-                <p className="text-gray-600">
-                  Date ranges:{" "}
-                  {(() => {
-                    const start = new Date(customStartDate);
-                    const end = new Date(customEndDate);
-                    const ranges = DateUtil.generateCustomDateRanges(
-                      start,
-                      end
-                    );
-                    return ranges.length;
-                  })()}
-                </p>
-              </div>
-            )} */}
-
-            {/* User Email + Logout */}
-            {userEmail && (
-              <div
-                className={`mt-6 flex items-center justify-between px-4 py-3 rounded-lg shadow ${
-                  isDarkMode
-                    ? "bg-green-700 text-green-100"
-                    : "bg-green-100 text-green-800"
-                }`}
-              >
-                <span>Hello, {userEmail}</span>
-                <button
-                  onClick={handleLogout}
-                  className="ml-3 text-sm font-semibold uppercase text-red-600 hover:text-red-700 hover:underline"
-                >
-                  Logout
-                </button>
-              </div>
-            )}
-
-            {/* Error */}
-            {error && (
-              <div className="text-red-600 mt-6 text-sm whitespace-pre-line">
-                Info:{" "}
-                {error === "API error: 401"
-                  ? "Please log in to the address: https://teacher.ican.vn\nThen use the extension to access the website."
-                  : error === "API error: 403"
-                  ? "Please Reload The Page !"
-                  : error}
-              </div>
-            )}
-
-            {/* No token → show link */}
-            {!bearerToken && (
-              <div className="text-red-600 mt-6 text-sm space-y-2">
-                <p>
-                  Error: Please log in to the address:{" "}
-                  <a
-                    href="https://teacher.ican.vn"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="underline text-blue-400 hover:text-blue-500"
-                  >
-                    https://teacher.ican.vn
-                  </a>
-                </p>
-                <p>
-                  Then use the extension:{" "}
-                  <a
-                    href="https://chromewebstore.google.com/detail/eihakmhchijandboncdhnjmeoakockoe?utm_source=item-share-cb"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="underline text-blue-400 hover:text-blue-500"
-                  >
-                    Install Extension from Chrome Web Store
-                  </a>
-                </p>
-              </div>
-            )}
-
-            {/* Stats */}
-            {stats && stats.totalFinishedCount > 0 && (
-              <div className="mt-8 space-y-2">
-                <div
-                  className={`p-4 rounded-lg ${
-                    isDarkMode
-                      ? "bg-gray-700 border border-gray-600"
-                      : "bg-blue-50 border border-blue-200"
-                  }`}
-                >
-                  <h3 className="font-bold text-lg mb-3 text-center">
-                    📊 Statistics Summary
-                  </h3>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="text-center">
-                      <p className="text-2xl font-bold text-blue-600">
-                        {stats.totalFinishedCount}
-                      </p>
-                      <p className="text-sm text-gray-600">Total Classes</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-2xl font-bold text-red-600">
-                        {stats.totalParticipationScore}
-                      </p>
-                      <p className="text-sm text-gray-600">Absences</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-2xl font-bold text-green-600">
-                        {stats.totalClasses}
-                      </p>
-                      <p className="text-sm text-gray-600">Effective Classes</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-2xl font-bold text-purple-600">
-                        {StatsCalculator.formatCurrency(stats.totalMoney)}
-                      </p>
-                      <p className="text-sm text-gray-600">Total Amount</p>
-                    </div>
-                  </div>
-
-                  {/* Date range info for stats */}
-                  {activeTab === "range" &&
-                    customStartDate &&
-                    customEndDate && (
-                      <div className="mt-4 pt-3 border-t border-gray-300 text-center text-sm text-gray-600">
+                    {/* Error/Instruction Message */}
+                    {!bearerToken && (
+                      <div className="text-red-600 mt-3 text-xs space-y-1">
                         <p>
-                          Period:{" "}
-                          {new Date(customStartDate).toLocaleDateString(
-                            "vi-VN"
-                          )}{" "}
-                          00:00 -{" "}
-                          {new Date(customEndDate).toLocaleDateString("vi-VN")}{" "}
-                          23:59
+                          Error: Please log in to the address:{" "}
+                          <a
+                            href="https://teacher.ican.vn"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="underline text-blue-400 hover:text-blue-500"
+                          >
+                            https://teacher.ican.vn
+                          </a>
+                        </p>
+                        <p>
+                          Then use the extension:{" "}
+                          <a
+                            href="https://chromewebstore.google.com/detail/eihakmhchijandboncdhnjmeoakockoe?utm_source=item-share-cb"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="underline text-blue-400 hover:text-blue-500"
+                          >
+                            Install Extension from Chrome Web Store
+                          </a>
                         </p>
                       </div>
                     )}
-                </div>
-              </div>
-            )}
 
-            {/* Absent Students */}
-
-            {/* Absent Students */}
-            {stats &&
-              stats.absentStudents &&
-              stats.absentStudents.length > 0 && (
-                <div className="mt-8">
-                  <h3 className="font-bold text-lg mb-4 text-center">
-                    📋 Absent Students Report
-                  </h3>
-
-                  {/* Desktop Table View */}
-                  <div className="hidden md:block">
-                    <div className="overflow-x-auto">
-                      <table className="w-full border-collapse border border-gray-300 rounded-lg overflow-hidden shadow-lg">
-                        <thead
-                          className={`${
-                            isDarkMode
-                              ? "bg-gray-800 text-gray-100"
-                              : "bg-blue-600 text-white"
-                          }`}
+                    {/* Manual Token Input */}
+                    {!bearerToken && !userEmail && showTokenInput && (
+                      <div className="mt-3 mb-4 space-y-2">
+                        <input
+                          type="text"
+                          value={inputToken}
+                          onChange={(e) => setInputToken(e.target.value)}
+                          placeholder="Enter code here"
+                          className="w-full px-3 py-2 text-sm border rounded-lg focus:ring focus:ring-purple-200 bg-inherit"
+                        />
+                        <button
+                          onClick={handleSaveToken}
+                          className="w-full px-4 py-2 text-sm bg-purple-600 text-white rounded-lg font-semibold shadow hover:bg-purple-700"
                         >
-                          <tr>
-                            <th className="px-4 py-3 text-left font-semibold border-r border-gray-300">
-                              📚 Class Name
-                            </th>
-                            <th className="px-4 py-3 text-left font-semibold border-r border-gray-300">
-                              📅 Date
-                            </th>
-                            <th className="px-4 py-3 text-left font-semibold border-r border-gray-300">
-                              🕐 Time
-                            </th>
-                            <th className="px-4 py-3 text-left font-semibold">
-                              👤 Student Name
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody
-                          className={`${
-                            isDarkMode
-                              ? "bg-gray-700 text-gray-100"
-                              : "bg-white text-gray-800"
-                          }`}
+                          Save Code
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Calculate Button */}
+                    {bearerToken && (
+                      <button
+                        onClick={
+                          activeTab === "month"
+                            ? fetchData
+                            : fetchDataByDateRange
+                        }
+                        disabled={loading}
+                        className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg text-sm font-semibold shadow hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-all duration-200 hover:scale-105"
+                      >
+                        {loading
+                          ? "Processing..."
+                          : `Calculate Statistics ${
+                              activeTab === "range" ? "for Date Range" : ""
+                            }`}
+                      </button>
+                    )}
+
+                    {/* Processed count */}
+                    {processedCount > 0 && (
+                      <div className="mt-3 text-sm font-medium text-center">
+                        Processed count: {processedCount}
+                      </div>
+                    )}
+
+                    {/* Error Display */}
+                    {error && (
+                      <div className="text-red-600 mt-3 text-xs whitespace-pre-line">
+                        Info:{" "}
+                        {error === "API error: 401"
+                          ? "Please log in to the address: https://teacher.ican.vn\nThen use the extension to access the website."
+                          : error === "API error: 403"
+                          ? "Please Reload The Page !"
+                          : error}
+                      </div>
+                    )}
+
+                    {/* User Email + Logout */}
+                    {userEmail && (
+                      <div
+                        className={`mt-4 flex items-center justify-between px-3 py-2 rounded-lg shadow text-xs ${
+                          isDarkMode
+                            ? "bg-green-700 text-green-100"
+                            : "bg-green-100 text-green-800"
+                        }`}
+                      >
+                        <span>Hello, {userEmail}</span>
+                        <button
+                          onClick={handleLogout}
+                          className="ml-2 text-xs font-semibold uppercase text-red-600 hover:text-red-700 hover:underline"
                         >
-                          {stats.absentStudents
-                            .sort(
-                              (a, b) =>
-                                new Date(b.fromDate) - new Date(a.fromDate)
-                            )
-                            .map((student, index) => (
-                              <tr
-                                key={`${student.fromDate}-${index}`}
-                                className={`${
-                                  index % 2 === 0
-                                    ? isDarkMode
-                                      ? "bg-gray-600"
-                                      : "bg-gray-50"
-                                    : isDarkMode
-                                    ? "bg-gray-700"
-                                    : "bg-white"
-                                } hover:bg-blue-50 hover:text-blue-800 transition-colors duration-200`}
-                              >
-                                <td className="px-4 py-3 border-r border-gray-300 font-medium">
-                                  {student.className}
-                                </td>
-                                <td className="px-4 py-3 border-r border-gray-300">
-                                  {new Date(
-                                    student.fromDate
-                                  ).toLocaleDateString("vi-VN", {
-                                    weekday: "long",
-                                    year: "numeric",
-                                    month: "long",
-                                    day: "numeric",
-                                  })}
-                                </td>
-                                <td className="px-4 py-3 border-r border-gray-300 text-sm">
-                                  {new Date(
-                                    student.fromDate
-                                  ).toLocaleTimeString("vi-VN", {
-                                    hour: "2-digit",
-                                    minute: "2-digit",
-                                  })}
-                                </td>
-                                <td className="px-4 py-3 font-medium">
-                                  {student.studentName}
-                                </td>
-                              </tr>
-                            ))}
-                        </tbody>
-                      </table>
-                    </div>
+                          Logout
+                        </button>
+                      </div>
+                    )}
                   </div>
 
-                  {/* Mobile Card View */}
-                  <div className="md:hidden">
-                    <div className="space-y-3 max-h-96 overflow-y-auto">
-                      {stats.absentStudents
-                        .sort(
-                          (a, b) => new Date(b.fromDate) - new Date(a.fromDate)
-                        )
-                        .map((student, index) => (
-                          <div
-                            key={`${student.fromDate}-${index}`}
-                            className={`p-4 border rounded-lg shadow-md ${
-                              isDarkMode
-                                ? "bg-gray-700 border-gray-600 text-gray-100"
-                                : "bg-white border-gray-200 text-gray-800"
-                            } hover:shadow-lg transition-shadow duration-200`}
-                          >
-                            <div className="flex items-start justify-between mb-2">
-                              <div className="flex-1">
-                                <div className="flex items-center mb-2">
-                                  <span className="text-blue-500 mr-2">📚</span>
-                                  <h4 className="font-semibold text-sm">
-                                    {student.className}
-                                  </h4>
-                                </div>
-                                <div className="flex items-center mb-2">
-                                  <span className="text-green-500 mr-2">
-                                    📅
-                                  </span>
-                                  <p className="text-sm">
-                                    {new Date(
-                                      student.fromDate
-                                    ).toLocaleDateString("vi-VN", {
-                                      weekday: "short",
-                                      year: "numeric",
-                                      month: "short",
-                                      day: "numeric",
-                                    })}
-                                  </p>
-                                </div>
-                                <div className="flex items-center mb-2">
-                                  <span className="text-purple-500 mr-2">
-                                    🕐
-                                  </span>
-                                  <p className="text-sm">
-                                    {new Date(
-                                      student.fromDate
-                                    ).toLocaleTimeString("vi-VN", {
-                                      hour: "2-digit",
-                                      minute: "2-digit",
-                                    })}
-                                  </p>
-                                </div>
-                                <div className="flex items-center">
-                                  <span className="text-red-500 mr-2">👤</span>
-                                  <p className="font-medium">
-                                    {student.studentName}
-                                  </p>
-                                </div>
-                              </div>
-                              <div
-                                className={`ml-3 px-2 py-1 rounded-full text-xs font-medium ${
-                                  isDarkMode
-                                    ? "bg-red-900 text-red-200"
-                                    : "bg-red-100 text-red-800"
-                                }`}
-                              >
-                                Absent
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                    </div>
-                  </div>
-
-                  {/* Summary Stats */}
+                  {/* Section 2: Absent Students Report (Top-Right) */}
                   <div
-                    className={`mt-4 p-3 rounded-lg text-center ${
+                    className={`p-4 lg:p-6 rounded-lg shadow-lg ${
                       isDarkMode
                         ? "bg-gray-700 border border-gray-600"
-                        : "bg-blue-50 border border-blue-200"
+                        : "bg-white border border-gray-200"
                     }`}
                   >
-                    <p
-                      className={`text-sm font-medium ${
-                        isDarkMode ? "text-gray-300" : "text-blue-800"
-                      }`}
-                    >
-                      📊 Total Absent Records:{" "}
-                      <span className="font-bold">
-                        {stats.absentStudents.length}
-                      </span>
-                    </p>
+                    <h3 className="font-bold text-xl lg:text-2xl mb-4 lg:mb-6 text-center">
+                      📋 Absent Students Report
+                    </h3>
+
+                    {stats.absentStudents && stats.absentStudents.length > 0 ? (
+                      <>
+                        {/* Desktop Table View */}
+                        <div className="hidden md:block">
+                          <div className="max-h-80 overflow-y-auto overflow-x-auto scrollbar-hide">
+                            <table className="w-full border-collapse border border-gray-300 rounded-lg overflow-hidden shadow-lg">
+                              <thead
+                                className={`${
+                                  isDarkMode
+                                    ? "bg-gray-800 text-gray-100"
+                                    : "bg-blue-600 text-white"
+                                } sticky top-0 z-10`}
+                              >
+                                <tr>
+                                  <th className="px-3 py-2 text-center font-semibold border-r border-gray-300 text-sm">
+                                    No.
+                                  </th>
+                                  <th className="px-3 py-2 text-left font-semibold border-r border-gray-300 text-sm">
+                                    📚 Class
+                                  </th>
+                                  <th className="px-3 py-2 text-left font-semibold border-r border-gray-300 text-sm">
+                                    📅 Date
+                                  </th>
+                                  <th className="px-3 py-2 text-left font-semibold border-r border-gray-300 text-sm">
+                                    🕐 Time
+                                  </th>
+                                  <th className="px-3 py-2 text-left font-semibold text-sm">
+                                    👤 Student
+                                  </th>
+                                </tr>
+                              </thead>
+                              <tbody
+                                className={`${
+                                  isDarkMode
+                                    ? "bg-gray-700 text-gray-100"
+                                    : "bg-white text-gray-800"
+                                }`}
+                              >
+                                {stats.absentStudents
+                                  .sort(
+                                    (a, b) =>
+                                      new Date(b.fromDate) -
+                                      new Date(a.fromDate)
+                                  )
+                                  .map((student, index) => (
+                                    <tr
+                                      key={`${student.fromDate}-${index}`}
+                                      className={`${
+                                        index % 2 === 0
+                                          ? isDarkMode
+                                            ? "bg-gray-600"
+                                            : "bg-gray-50"
+                                          : isDarkMode
+                                          ? "bg-gray-700"
+                                          : "bg-white"
+                                      } hover:bg-blue-50 hover:text-blue-800 transition-colors duration-200`}
+                                    >
+                                      <td className="px-3 py-2 border-r border-gray-300 text-center font-medium text-sm">
+                                        {index + 1}
+                                      </td>
+                                      <td className="px-3 py-2 border-r border-gray-300 font-medium text-sm">
+                                        {student.className}
+                                      </td>
+                                      <td className="px-3 py-2 border-r border-gray-300 text-xs">
+                                        {new Date(
+                                          student.fromDate
+                                        ).toLocaleDateString("vi-VN", {
+                                          weekday: "short",
+                                          month: "short",
+                                          day: "numeric",
+                                        })}
+                                      </td>
+                                      <td className="px-3 py-2 border-r border-gray-300 text-xs">
+                                        {new Date(
+                                          student.fromDate
+                                        ).toLocaleTimeString("vi-VN", {
+                                          hour: "2-digit",
+                                          minute: "2-digit",
+                                        })}
+                                      </td>
+                                      <td className="px-3 py-2 font-medium text-sm">
+                                        {student.studentName}
+                                      </td>
+                                    </tr>
+                                  ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+
+                        {/* Mobile Card View */}
+                        <div className="md:hidden">
+                          <div className="space-y-2 max-h-80 overflow-y-auto">
+                            {stats.absentStudents
+                              .sort(
+                                (a, b) =>
+                                  new Date(b.fromDate) - new Date(a.fromDate)
+                              )
+                              .map((student, index) => (
+                                <div
+                                  key={`${student.fromDate}-${index}`}
+                                  className={`p-3 border rounded-lg shadow-sm ${
+                                    isDarkMode
+                                      ? "bg-gray-600 border-gray-500 text-gray-100"
+                                      : "bg-gray-50 border-gray-200 text-gray-800"
+                                  }`}
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-xs font-bold text-blue-600 bg-blue-100 px-2 py-1 rounded-full">
+                                        #{index + 1}
+                                      </span>
+                                    </div>
+                                    <div className="flex-1">
+                                      <p className="font-medium text-sm">
+                                        {student.studentName}
+                                      </p>
+                                      <p className="text-xs text-gray-500">
+                                        {student.className}
+                                      </p>
+                                    </div>
+                                    <div className="text-xs text-gray-500">
+                                      {new Date(
+                                        student.fromDate
+                                      ).toLocaleDateString("vi-VN", {
+                                        month: "short",
+                                        day: "numeric",
+                                      })}
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                          </div>
+                        </div>
+
+                        {/* Summary */}
+                        <div className="mt-4 text-center">
+                          <p className="text-sm font-medium text-gray-600">
+                            📊 Total Absent Records:{" "}
+                            <span className="font-bold text-blue-600">
+                              {stats.absentStudents.length}
+                            </span>
+                          </p>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="text-center py-8 text-gray-500">
+                        <p>No absent students found</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Section 3: Statistics Summary + Support Project (Bottom-Left) */}
+                  <div
+                    className={`p-4 lg:p-6 rounded-lg shadow-lg ${
+                      isDarkMode
+                        ? "bg-gray-700 border border-gray-600"
+                        : "bg-white border border-gray-200"
+                    }`}
+                  >
+                    {/* Statistics Summary */}
+                    <h3 className="font-bold text-xl lg:text-2xl mb-4 lg:mb-6 text-center">
+                      📊 Statistics Summary
+                    </h3>
+                    <div className="grid grid-cols-2 gap-4 lg:gap-6 mb-6">
+                      <div className="text-center">
+                        <p className="text-2xl lg:text-3xl font-bold text-blue-600">
+                          {stats.totalFinishedCount}
+                        </p>
+                        <p className="text-sm lg:text-base text-gray-600">
+                          Total Classes
+                        </p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-2xl lg:text-3xl font-bold text-red-600">
+                          {stats.totalParticipationScore}
+                        </p>
+                        <p className="text-sm lg:text-base text-gray-600">
+                          Absences
+                        </p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-2xl lg:text-3xl font-bold text-green-600">
+                          {stats.totalClasses}
+                        </p>
+                        <p className="text-sm lg:text-base text-gray-600">
+                          Effective Classes
+                        </p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-2xl lg:text-3xl font-bold text-purple-600">
+                          {StatsCalculator.formatCurrency(stats.totalMoney)}
+                        </p>
+                        <p className="text-sm lg:text-base text-gray-600">
+                          Total Amount
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Date range info for stats */}
+                    {activeTab === "range" &&
+                      customStartDate &&
+                      customEndDate && (
+                        <div className="mb-6 pt-3 border-t border-gray-300 text-center text-sm text-gray-600">
+                          <p>
+                            Period:{" "}
+                            {new Date(customStartDate).toLocaleDateString(
+                              "vi-VN"
+                            )}{" "}
+                            00:00 -{" "}
+                            {new Date(customEndDate).toLocaleDateString(
+                              "vi-VN"
+                            )}{" "}
+                            23:59
+                          </p>
+                        </div>
+                      )}
+
+                    {/* Support the Project */}
+                    <div className="border-t border-gray-300 pt-6">
+                      <h4 className="font-bold text-lg mb-4 text-center">
+                        ❤️ Support the Project
+                      </h4>
+
+                      <div className="text-center">
+                        <p className="text-sm lg:text-base text-gray-600 mb-4">
+                          If you find this tool helpful, consider buying me a
+                          coffee!
+                        </p>
+
+                        <div
+                          className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl mb-4 ${
+                            isDarkMode ? "bg-gray-600" : "bg-pink-50"
+                          }`}
+                        >
+                          <span className="font-semibold text-sm">
+                            TP Bank:
+                          </span>
+                          <span className="tracking-wide font-mono text-sm">
+                            {DONATE_INFO.bankNumber}
+                          </span>
+                        </div>
+
+                        <div className="flex justify-center">
+                          <img
+                            src={DONATE_INFO.qrImageUrl}
+                            alt="Donate QR"
+                            className="w-32 h-32 md:w-40 md:h-40 object-contain rounded-xl"
+                            onError={(e) => {
+                              e.currentTarget.style.display = "none";
+                            }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Section 4: Student Details List (Bottom-Right) */}
+                  <div
+                    className={`p-4 lg:p-6 rounded-lg shadow-lg ${
+                      isDarkMode
+                        ? "bg-gray-700 border border-gray-600"
+                        : "bg-white border border-gray-200"
+                    }`}
+                  >
+                    <h3 className="font-bold text-xl lg:text-2xl mb-4 lg:mb-6 text-center">
+                      👥 Student Details & Lessons
+                    </h3>
+
+                    {stats.studentDetails && stats.studentDetails.length > 0 ? (
+                      <>
+                        {/* Desktop Table View */}
+                        <div className="hidden md:block">
+                          <div className="max-h-96 overflow-y-auto overflow-x-auto scrollbar-hide">
+                            <table className="w-full border-collapse border border-gray-300 rounded-lg overflow-hidden shadow-lg">
+                              <thead
+                                className={`${
+                                  isDarkMode
+                                    ? "bg-gray-800 text-gray-100"
+                                    : "bg-green-600 text-white"
+                                } sticky top-0 z-10`}
+                              >
+                                <tr>
+                                  <th className="px-3 py-2 text-center font-semibold border-r border-gray-300 text-sm">
+                                    No.
+                                  </th>
+                                  <th className="px-3 py-2 text-left font-semibold border-r border-gray-300 text-sm">
+                                    👤 Student
+                                  </th>
+                                  <th className="px-3 py-2 text-left font-semibold border-r border-gray-300 text-sm">
+                                    📚 Class
+                                  </th>
+                                  <th className="px-3 py-2 text-left font-semibold border-r border-gray-300 text-sm">
+                                    📖 Lesson
+                                  </th>
+                                  <th className="px-3 py-2 text-center font-semibold text-sm">
+                                    📊 Classes Count
+                                  </th>
+                                </tr>
+                              </thead>
+                              <tbody
+                                className={`${
+                                  isDarkMode
+                                    ? "bg-gray-700 text-gray-100"
+                                    : "bg-white text-gray-800"
+                                }`}
+                              >
+                                {stats.studentDetails
+                                  .filter(
+                                    (student, index, self) =>
+                                      // Lọc trùng lặp dựa trên studentId và className
+                                      index ===
+                                      self.findIndex(
+                                        (s) =>
+                                          s.studentId === student.studentId &&
+                                          s.className === student.className
+                                      )
+                                  )
+                                  .sort(
+                                    (a, b) =>
+                                      new Date(b.fromDate) -
+                                      new Date(a.fromDate)
+                                  )
+                                  .map((student, index) => (
+                                    <tr
+                                      key={`${student.studentId}-${index}`}
+                                      className={`${
+                                        index % 2 === 0
+                                          ? isDarkMode
+                                            ? "bg-gray-600"
+                                            : "bg-gray-50"
+                                          : isDarkMode
+                                          ? "bg-gray-700"
+                                          : "bg-white"
+                                      } hover:bg-green-50 hover:text-green-800 transition-colors duration-200`}
+                                    >
+                                      <td className="px-3 py-2 border-r border-gray-300 text-center font-medium text-sm">
+                                        {index + 1}
+                                      </td>
+                                      <td className="px-3 py-2 border-r border-gray-300 font-medium text-sm">
+                                        {student.studentName}
+                                      </td>
+                                      <td className="px-3 py-2 border-r border-gray-300 text-xs">
+                                        {student.className}
+                                      </td>
+                                      <td className="px-3 py-2 border-r border-gray-300 text-xs">
+                                        {student.lessonName || "N/A"}
+                                      </td>
+                                      <td className="px-3 py-2 text-sm">
+                                        {
+                                          stats.studentDetails.filter(
+                                            (s) =>
+                                              s.studentId ===
+                                                student.studentId &&
+                                              s.className === student.className
+                                          ).length
+                                        }
+                                      </td>
+                                    </tr>
+                                  ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+
+                        {/* Mobile Card View */}
+                        <div className="md:hidden">
+                          <div className="space-y-2 max-h-48 overflow-y-auto">
+                            {stats.studentDetails
+                              .filter(
+                                (student, index, self) =>
+                                  // Lọc trùng lặp dựa trên studentId và className
+                                  index ===
+                                  self.findIndex(
+                                    (s) =>
+                                      s.studentId === student.studentId &&
+                                      s.className === student.className
+                                  )
+                              )
+                              .sort(
+                                (a, b) =>
+                                  new Date(b.fromDate) - new Date(a.fromDate)
+                              )
+                              .map((student, index) => (
+                                <div
+                                  key={`${student.studentId}-${index}`}
+                                  className={`p-3 border rounded-lg shadow-sm ${
+                                    isDarkMode
+                                      ? "bg-gray-600 border-gray-500 text-gray-100"
+                                      : "bg-gray-50 border-gray-200 text-gray-800"
+                                  }`}
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-xs font-bold text-blue-600 bg-blue-100 px-2 py-1 rounded-full">
+                                        #{index + 1}
+                                      </span>
+                                    </div>
+                                    <div className="flex-1">
+                                      <p className="font-medium text-sm">
+                                        {student.studentName}
+                                      </p>
+                                      <p className="text-xs text-gray-500">
+                                        {student.className}
+                                      </p>
+                                      <p className="text-xs text-gray-400">
+                                        {student.lessonName || "N/A"}
+                                      </p>
+                                    </div>
+                                    <div className="text-xs text-gray-500">
+                                      📊{" "}
+                                      {
+                                        stats.studentDetails.filter(
+                                          (s) =>
+                                            s.studentId === student.studentId &&
+                                            s.className === student.className
+                                        ).length
+                                      }{" "}
+                                      classes
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                          </div>
+                        </div>
+
+                        {/* Summary */}
+                        <div className="mt-4 text-center">
+                          <p className="text-sm font-medium text-gray-600">
+                            👥 Total Students (After Filtering):{" "}
+                            <span className="font-bold text-green-600">
+                              {
+                                stats.studentDetails.filter(
+                                  (student, index, self) =>
+                                    index ===
+                                    self.findIndex(
+                                      (s) =>
+                                        s.studentId === student.studentId &&
+                                        s.className === student.className
+                                    )
+                                ).length
+                              }
+                            </span>
+                            {" • "}
+                            📊 Total Classes:{" "}
+                            <span className="font-bold text-blue-600">
+                              {stats.studentDetails.length}
+                            </span>
+                          </p>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="text-center py-8 text-gray-500">
+                        <p>No student details available</p>
+                      </div>
+                    )}
                   </div>
                 </div>
-              )}
+              </div>
+            </div>
           </div>
         </div>
-      </div>
 
-      <div className="px-4 sm:px-0">
-        <div className="sm:max-w-xl sm:mx-auto">
-          <DonateSection isDarkMode={isDarkMode} />
-        </div>
-      </div>
+        {/* Footer */}
+        <footer className="mt-8 lg:mt-12 text-center text-sm">
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-2 text-gray-500">
+            <span>• Ver 3.5</span>
+            <span>©2025 Châu Đỗ. All rights reserved.</span>
 
-      {/* Footer */}
-      <footer className="mt-12 text-center text-sm">
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-2 text-gray-500">
-          <span>• Ver 3.3</span>
-          <span>©2025 Châu Đỗ. All rights reserved.</span>
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/60">
-            👀 Visitors: <b>{visitorTotal}</b>
-          </span>
-        </div>
-      </footer>
-    </div>
+            {/* Visitors Section */}
+            <div className="flex flex-col sm:flex-row items-center gap-2">
+              {/* Visitors Today */}
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-100 text-green-700">
+                📅 Today: <b>{visitorToday}</b>
+              </span>
+
+              {/* Visitors Total */}
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
+                👀 Total: <b>{visitorTotal}</b>
+              </span>
+            </div>
+
+            {/* Date Selector for Visitors */}
+            {/* <div className="flex items-center gap-2">
+              <input
+                type="date"
+                value={visitorDate}
+                onChange={(e) => setVisitorDate(e.target.value)}
+                className="px-2 py-1 text-xs border rounded focus:ring focus:ring-blue-200 bg-inherit"
+              />
+              <button
+                onClick={() =>
+                  getVisitorsByDate(visitorDate).then((count) => {
+                    // Có thể hiển thị kết quả trong console hoặc alert
+                    console.log(`Visitors on ${visitorDate}: ${count}`);
+                  })
+                }
+                className="px-2 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+              >
+                Check
+              </button>
+            </div> */}
+          </div>
+        </footer>
+      </div>
+    </>
   );
 };
 

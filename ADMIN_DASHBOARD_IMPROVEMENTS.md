@@ -288,6 +288,61 @@ AdminDashboard.js giờ đây có **cùng stability, performance và UI design**
 - **Enhanced UI** với table view cho Absent Students, responsive design
 - **Professional Modal UI** với gradient backgrounds, modern styling, consistent với TeacherStats.js
 - **Enhanced Date Range Flexibility** cho phép chọn future dates với end time 23:59:59
+- **Comprehensive API Documentation** để hiểu rõ endpoints, response formats, và data processing logic
+
+---
+
+## 🔗 **API Documentation**
+
+### **📖 API_DOCUMENTATION.md**
+
+File mới được tạo để ghi nhận chi tiết về:
+
+#### **API Endpoints**
+
+1. **Products API** (`/products?page=SCHEDULE`)
+
+   - Lấy danh sách khóa học có sẵn
+   - Response format với code, name, status, id
+   - Categories: Easy Speak, Speak Well, Freetalk, Let's Go
+
+2. **Shifts API** (`/shifts`)
+
+   - Lấy danh sách ca học theo date range
+   - Parameters: status[], fromDate, toDate, product_ids[]
+   - Response: classSessionId, className, classStatus, fromDate, toDate
+
+3. **Diary API** (`/diary/<CLASS_SESSION_ID>`)
+   - Lấy chi tiết buổi học và trạng thái học viên
+   - Response: studentName, isParticipated (true/false)
+
+#### **Data Processing Logic**
+
+- **Date Range Generation**: Chia thành chunks 7 ngày với start 00:00:00 và end 23:59:59
+- **Statistics Calculation**: Tính participation score (vắng = 0.5 điểm)
+- **Duplicate Prevention**: Kiểm tra trùng lặp để accurate statistics
+
+#### **Error Handling & Performance**
+
+- **HTTP Status Codes**: 200, 401, 403, 404, 429, 500+
+- **Rate Limiting**: pLimit(5) cho concurrent requests
+- **Request Timeout**: 30s cho diary, 15s cho initial check
+- **Graceful Error Handling**: Skip 404/5xx errors, continue processing
+
+#### **Usage Examples**
+
+- **cURL commands** cho testing và debugging
+- **Code snippets** cho implementation reference
+- **Best practices** cho error handling và performance
+
+---
+
+## 🎯 **Next Steps**
+
+1. **Test API Documentation**: Verify all endpoints và response formats
+2. **Update Implementation**: Apply documented best practices
+3. **Performance Monitoring**: Track API response times và error rates
+4. **Error Handling**: Implement comprehensive error handling theo documentation
 
 ---
 

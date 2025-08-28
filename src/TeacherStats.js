@@ -1161,7 +1161,7 @@ const DonateSection = ({ isDarkMode }) => {
           <img
             src={DONATE_INFO.qrImageUrl}
             alt="Donate QR"
-            className="w-56 h-56 md:w48 md:h-48 object-contain rounded-xl border"
+            className="w-56 h-56 md:w48 md:h-48 object-contain rounded-xl "
             onError={(e) => {
               e.currentTarget.style.display = "none";
             }}

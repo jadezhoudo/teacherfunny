@@ -14,6 +14,7 @@ import {
   signOut,
   onAuthStateChanged,
 } from "firebase/auth";
+import pLimit from "p-limit";
 
 const AdminDashboard = () => {
   const [user, setUser] = useState(null);
@@ -208,13 +209,15 @@ const AdminDashboard = () => {
       const apiBase =
         "https://api-teacher-ican.vercel.app/api/teacher/api/v1/api/teacher";
 
-      // Test API endpoint first
+      // Test API endpoint first with GET method (HEAD not supported)
       try {
         const testResponse = await fetch(`${apiBase}/products?page=SCHEDULE`, {
-          method: "HEAD",
+          method: "GET",
           headers: {
             Authorization: `Bearer ${userToken}`,
           },
+          // Add timeout to prevent hanging
+          signal: AbortSignal.timeout(15000), // 15 second timeout
         });
 
         if (testResponse.status === 401) {
@@ -229,6 +232,11 @@ const AdminDashboard = () => {
           throw new Error("Server error. Please try again later.");
         }
       } catch (error) {
+        if (error.name === "AbortError") {
+          throw new Error(
+            "API request timed out. The server is taking too long to respond. Please try again later."
+          );
+        }
         if (
           error.message.includes("Token expired") ||
           error.message.includes("Access denied")
@@ -346,48 +354,91 @@ const AdminDashboard = () => {
         (classItem) => classItem.classStatus === "FINISHED"
       );
 
-      // Get diary details for finished classes
-      const diaryPromises = finishedClasses.map((classItem) =>
-        fetch(
-          `https://api-teacher-ican.vercel.app/api/teacher/api/v1/api/diary/${classItem.classSessionId}`,
-          {
-            headers: {
-              Authorization: `Bearer ${userToken}`,
-              "Content-Type": "application/json",
-            },
-          }
-        )
-      );
+      // Get diary details for finished classes using pLimit (same as TeacherStats.js)
+      const limit = pLimit(5); // Limit to 5 concurrent requests (same as TeacherStats.js)
 
-      const diaryResponses = await Promise.all(diaryPromises);
-
-      // Check each response and handle errors
-      const diaryResults = await Promise.all(
-        diaryResponses.map(async (response, index) => {
-          if (!response.ok) {
-            if (response.status === 404) {
-              console.warn(
-                `Diary not found for class ${index + 1}: ${response.status}`
-              );
-              return null; // Return null for 404, don't throw error
-            }
-            throw new Error(`Diary API error ${index + 1}: ${response.status}`);
-          }
-
-          // Check if response is JSON
-          const contentType = response.headers.get("content-type");
-          if (!contentType || !contentType.includes("application/json")) {
-            const textResponse = await response.text();
-            throw new Error(
-              `Invalid diary response format ${
-                index + 1
-              }. Expected JSON but got: ${textResponse.substring(0, 100)}...`
+      const diaryPromises = finishedClasses.map((classItem, index) =>
+        limit(async () => {
+          try {
+            const response = await fetch(
+              `https://api-teacher-ican.vercel.app/api/teacher/api/v1/api/diary/${classItem.classSessionId}`,
+              {
+                headers: {
+                  Authorization: `Bearer ${userToken}`,
+                  "Content-Type": "application/json",
+                },
+                // Add timeout to prevent hanging requests
+                signal: AbortSignal.timeout(30000), // 30 second timeout
+              }
             );
-          }
 
-          return response.json();
+            if (!response.ok) {
+              if (response.status === 404) {
+                console.warn(
+                  `📭 Diary not found for class ${index + 1}: ${
+                    classItem.classSessionId
+                  }`
+                );
+                return null; // Return null for 404, don't throw error (same as TeacherStats.js)
+              }
+
+              // Handle other HTTP errors gracefully
+              if (response.status >= 500) {
+                console.warn(
+                  `⚠️ Server error for diary ${index + 1}: ${response.status}`
+                );
+                return null;
+              }
+
+              throw new Error(
+                `Diary API error ${index + 1}: ${response.status}`
+              );
+            }
+
+            // Check if response is JSON
+            const contentType = response.headers.get("content-type");
+            if (!contentType || !contentType.includes("application/json")) {
+              const textResponse = await response.text();
+              console.warn(
+                `❌ Invalid content type for diary ${
+                  index + 1
+                }: ${textResponse.substring(0, 100)}...`
+              );
+              return null; // Return null instead of throwing error
+            }
+
+            return await response.json();
+          } catch (error) {
+            // Handle network errors, timeouts, and other issues gracefully
+            if (error.name === "AbortError") {
+              console.warn(
+                `⏰ Diary request timeout for class ${index + 1}: ${
+                  classItem.classSessionId
+                }`
+              );
+              return null;
+            }
+
+            if (
+              error.message.includes("Failed to fetch") ||
+              error.message.includes("CORS")
+            ) {
+              console.warn(
+                `🚫 Network/CORS error for diary ${index + 1}: ${
+                  classItem.classSessionId
+                }`
+              );
+              return null;
+            }
+
+            console.error(`💥 Unexpected error for diary ${index + 1}:`, error);
+            return null; // Return null instead of throwing error
+          }
         })
       );
+
+      // Wait for all diary requests to complete
+      const diaryResults = await Promise.all(diaryPromises);
 
       // Calculate stats (same logic as TeacherStats.js)
       let totalFinishedCount = finishedClasses.length;
@@ -432,13 +483,13 @@ const AdminDashboard = () => {
           }
         } else if (diaryData === null) {
           skippedDiaries++;
-          console.log(`Skipped diary ${index + 1} due to 404 error`);
+          console.log(`📭 Skipped diary ${index + 1} due to missing data`);
         }
       });
 
-      // Log summary for debugging
+      // Log summary for debugging (same as TeacherStats.js)
       console.log(
-        `Diary processing summary: ${processedDiaries} processed, ${skippedDiaries} skipped out of ${diaryResults.length} total`
+        `📊 Monthly Diary Processing: ${processedDiaries} processed, ${skippedDiaries} skipped out of ${diaryResults.length} total`
       );
 
       const totalClasses = totalFinishedCount - totalParticipationScore;
@@ -509,13 +560,15 @@ const AdminDashboard = () => {
       const apiBase =
         "https://api-teacher-ican.vercel.app/api/teacher/api/v1/api/teacher";
 
-      // Test API endpoint first
+      // Test API endpoint first with GET method (HEAD not supported)
       try {
         const testResponse = await fetch(`${apiBase}/products?page=SCHEDULE`, {
-          method: "HEAD",
+          method: "GET",
           headers: {
             Authorization: `Bearer ${userToken}`,
           },
+          // Add timeout to prevent hanging
+          signal: AbortSignal.timeout(15000), // 15 second timeout
         });
 
         if (testResponse.status === 401) {
@@ -530,6 +583,11 @@ const AdminDashboard = () => {
           throw new Error("Server error. Please try again later.");
         }
       } catch (error) {
+        if (error.name === "AbortError") {
+          throw new Error(
+            "API request timed out. The server is taking too long to respond. Please try again later."
+          );
+        }
         if (
           error.message.includes("Token expired") ||
           error.message.includes("Access denied")
@@ -650,48 +708,91 @@ const AdminDashboard = () => {
         (classItem) => classItem.classStatus === "FINISHED"
       );
 
-      // Get diary details for finished classes
-      const diaryPromises = finishedClasses.map((classItem) =>
-        fetch(
-          `https://api-teacher-ican.vercel.app/api/teacher/api/v1/api/diary/${classItem.classSessionId}`,
-          {
-            headers: {
-              Authorization: `Bearer ${userToken}`,
-              "Content-Type": "application/json",
-            },
-          }
-        )
-      );
+      // Get diary details for finished classes using pLimit (same as TeacherStats.js)
+      const limit = pLimit(5); // Limit to 5 concurrent requests (same as TeacherStats.js)
 
-      const diaryResponses = await Promise.all(diaryPromises);
-
-      // Check each response and handle errors
-      const diaryResults = await Promise.all(
-        diaryResponses.map(async (response, index) => {
-          if (!response.ok) {
-            if (response.status === 404) {
-              console.warn(
-                `Diary not found for class ${index + 1}: ${response.status}`
-              );
-              return null; // Return null for 404, don't throw error
-            }
-            throw new Error(`Diary API error ${index + 1}: ${response.status}`);
-          }
-
-          // Check if response is JSON
-          const contentType = response.headers.get("content-type");
-          if (!contentType || !contentType.includes("application/json")) {
-            const textResponse = await response.text();
-            throw new Error(
-              `Invalid diary response format ${
-                index + 1
-              }. Expected JSON but got: ${textResponse.substring(0, 100)}...`
+      const diaryPromises = finishedClasses.map((classItem, index) =>
+        limit(async () => {
+          try {
+            const response = await fetch(
+              `https://api-teacher-ican.vercel.app/api/teacher/api/v1/api/diary/${classItem.classSessionId}`,
+              {
+                headers: {
+                  Authorization: `Bearer ${userToken}`,
+                  "Content-Type": "application/json",
+                },
+                // Add timeout to prevent hanging requests
+                signal: AbortSignal.timeout(30000), // 30 second timeout
+              }
             );
-          }
 
-          return response.json();
+            if (!response.ok) {
+              if (response.status === 404) {
+                console.warn(
+                  `📭 Diary not found for class ${index + 1}: ${
+                    classItem.classSessionId
+                  }`
+                );
+                return null; // Return null for 404, don't throw error (same as TeacherStats.js)
+              }
+
+              // Handle other HTTP errors gracefully
+              if (response.status >= 500) {
+                console.warn(
+                  `⚠️ Server error for diary ${index + 1}: ${response.status}`
+                );
+                return null;
+              }
+
+              throw new Error(
+                `Diary API error ${index + 1}: ${response.status}`
+              );
+            }
+
+            // Check if response is JSON
+            const contentType = response.headers.get("content-type");
+            if (!contentType || !contentType.includes("application/json")) {
+              const textResponse = await response.text();
+              console.warn(
+                `❌ Invalid content type for diary ${
+                  index + 1
+                }: ${textResponse.substring(0, 100)}...`
+              );
+              return null; // Return null instead of throwing error
+            }
+
+            return await response.json();
+          } catch (error) {
+            // Handle network errors, timeouts, and other issues gracefully
+            if (error.name === "AbortError") {
+              console.warn(
+                `⏰ Diary request timeout for class ${index + 1}: ${
+                  classItem.classSessionId
+                }`
+              );
+              return null;
+            }
+
+            if (
+              error.message.includes("Failed to fetch") ||
+              error.message.includes("CORS")
+            ) {
+              console.warn(
+                `🚫 Network/CORS error for diary ${index + 1}: ${
+                  classItem.classSessionId
+                }`
+              );
+              return null;
+            }
+
+            console.error(`💥 Unexpected error for diary ${index + 1}:`, error);
+            return null; // Return null instead of throwing error
+          }
         })
       );
+
+      // Wait for all diary requests to complete
+      const diaryResults = await Promise.all(diaryPromises);
 
       // Calculate stats (same logic as monthly)
       let totalFinishedCount = finishedClasses.length;
@@ -703,7 +804,23 @@ const AdminDashboard = () => {
       diaryResults.forEach((diaryData, index) => {
         if (diaryData && diaryData.data && diaryData.data.details) {
           processedDiaries++;
+
+          // Use same calculation logic as TeacherStats.js StatsCalculator.calculateParticipationScore
           const details = diaryData.data.details;
+          const classData = {
+            fromDate: finishedClasses[index].fromDate,
+            className: finishedClasses[index].className,
+          };
+
+          // Check for duplicate entries to avoid counting same absence multiple times
+          const isDuplicate = (newEntry) => {
+            return allAbsentStudents.some(
+              (existing) =>
+                existing.className === newEntry.className &&
+                new Date(existing.fromDate).getTime() ===
+                  new Date(newEntry.fromDate).getTime()
+            );
+          };
 
           if (details.length > 1) {
             const absentDetails = details.filter(
@@ -716,33 +833,42 @@ const AdminDashboard = () => {
                 .map((detail) => detail.studentName)
                 .join(" + ");
 
-              allAbsentStudents.push({
+              const newEntry = {
                 studentName: combinedStudentNames,
-                fromDate: finishedClasses[index].fromDate,
-                className: finishedClasses[index].className,
-              });
+                fromDate: classData.fromDate,
+                className: classData.className,
+              };
+
+              if (!isDuplicate(newEntry)) {
+                allAbsentStudents.push(newEntry);
+              }
             }
           } else {
             details.forEach((detail) => {
               if (detail.isParticipated === false) {
                 totalParticipationScore += 0.5;
-                allAbsentStudents.push({
+
+                const newEntry = {
                   studentName: detail.studentName,
-                  fromDate: finishedClasses[index].fromDate,
-                  className: finishedClasses[index].className,
-                });
+                  fromDate: classData.fromDate,
+                  className: classData.className,
+                };
+
+                if (!isDuplicate(newEntry)) {
+                  allAbsentStudents.push(newEntry);
+                }
               }
             });
           }
         } else if (diaryData === null) {
           skippedDiaries++;
-          console.log(`Skipped diary ${index + 1} due to 404 error`);
+          console.log(`📭 Skipped diary ${index + 1} due to missing data`);
         }
       });
 
-      // Log summary for debugging
+      // Log summary for debugging (same as TeacherStats.js)
       console.log(
-        `Diary processing summary: ${processedDiaries} processed, ${skippedDiaries} skipped out of ${diaryResults.length} total`
+        `📊 Date Range Diary Processing: ${processedDiaries} processed, ${skippedDiaries} skipped out of ${diaryResults.length} total`
       );
 
       const totalClasses = totalFinishedCount - totalParticipationScore;
@@ -1464,158 +1590,195 @@ const AdminDashboard = () => {
 
       {/* NEW: User Stats Modal */}
       {showUserDetailsModal && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-          <div className="relative top-20 mx-auto p-5 border w-11/12 md:w-3/4 lg:w-1/2 shadow-lg rounded-md bg-white">
-            <div className="mt-3">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-medium text-gray-900">
-                  📊 User Statistics: {selectedUserForDetails}
-                </h3>
-                <button
-                  onClick={() => setShowUserDetailsModal(false)}
-                  className="text-gray-400 hover:text-gray-600 text-xl font-bold"
-                >
-                  ×
-                </button>
+        <div className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 p-4">
+          <div className="relative top-10 mx-auto w-11/12 md:w-4/5 lg:w-3/4 xl:w-2/3">
+            <div className="bg-white rounded-3xl shadow-2xl overflow-hidden">
+              {/* Header */}
+              <div className="bg-gradient-to-r from-blue-600 to-purple-600 px-8 py-6">
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center">
+                      <span className="text-white text-2xl">📊</span>
+                    </div>
+                    <div>
+                      <h3 className="text-2xl font-bold text-white">
+                        User Statistics
+                      </h3>
+                      <p className="text-blue-100 text-sm">
+                        {selectedUserForDetails}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setShowUserDetailsModal(false)}
+                    className="w-10 h-10 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center text-white hover:text-gray-100 transition-colors"
+                  >
+                    ✕
+                  </button>
+                </div>
               </div>
 
               {/* Date Selection Toggle */}
-              <div className="mb-6 p-4 bg-blue-50 rounded-lg">
-                <h4 className="font-medium text-blue-900 mb-3">
-                  📅 Select Date Range or Month/Year
-                </h4>
+              <div className="px-8 py-6">
+                <div className="mb-6">
+                  <h4 className="font-bold text-xl mb-4 text-center text-gray-800">
+                    📅 Select Date Range or Month/Year
+                  </h4>
 
-                {/* Toggle between Monthly and Date Range */}
-                <div className="mb-4">
-                  <div className="flex space-x-4">
-                    <label className="flex items-center">
-                      <input
-                        type="radio"
-                        checked={!useDateRange}
-                        onChange={() => setUseDateRange(false)}
-                        className="mr-2"
-                      />
-                      <span className="text-sm font-medium">Monthly</span>
-                    </label>
-                    <label className="flex items-center">
-                      <input
-                        type="radio"
-                        checked={useDateRange}
-                        onChange={() => setUseDateRange(true)}
-                        className="mr-2"
-                      />
-                      <span className="text-sm font-medium">Date Range</span>
-                    </label>
+                  {/* Toggle between Monthly and Date Range */}
+                  <div className="flex mb-6 shadow rounded-lg overflow-hidden border border-gray-200">
+                    <button
+                      onClick={() => setUseDateRange(false)}
+                      className={`flex-1 px-6 py-3 text-lg font-medium transition-colors duration-200 ${
+                        !useDateRange
+                          ? "bg-blue-600 text-white"
+                          : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                      }`}
+                    >
+                      📅 By Month
+                    </button>
+                    <button
+                      onClick={() => setUseDateRange(true)}
+                      className={`flex-1 px-6 py-3 text-lg font-medium transition-colors duration-200 ${
+                        useDateRange
+                          ? "bg-blue-600 text-white"
+                          : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                      }`}
+                    >
+                      📊 By Date Range
+                    </button>
                   </div>
                 </div>
 
                 {/* Monthly Selection */}
                 {!useDateRange && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Month:
-                      </label>
-                      <select
-                        value={selectedMonth}
-                        onChange={(e) =>
-                          setSelectedMonth(parseInt(e.target.value))
-                        }
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        {Array.from({ length: 12 }, (_, i) => i + 1).map(
-                          (month) => (
-                            <option key={month} value={month}>
-                              {new Date(2000, month - 1).toLocaleString(
-                                "default",
-                                {
-                                  month: "long",
-                                }
-                              )}
+                  <div className="mb-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+                          <span className="text-blue-500">📅</span>
+                          Month:
+                        </label>
+                        <select
+                          value={selectedMonth}
+                          onChange={(e) =>
+                            setSelectedMonth(parseInt(e.target.value))
+                          }
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                        >
+                          {Array.from({ length: 12 }, (_, i) => i + 1).map(
+                            (month) => (
+                              <option key={month} value={month}>
+                                {new Date(2000, month - 1).toLocaleString(
+                                  "default",
+                                  {
+                                    month: "long",
+                                  }
+                                )}
+                              </option>
+                            )
+                          )}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+                          <span className="text-green-500">📆</span>
+                          Year:
+                        </label>
+                        <select
+                          value={selectedYear}
+                          onChange={(e) =>
+                            setSelectedYear(parseInt(e.target.value))
+                          }
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                        >
+                          {[
+                            new Date().getFullYear(),
+                            new Date().getFullYear() - 1,
+                            new Date().getFullYear() - 2,
+                          ].map((year) => (
+                            <option key={year} value={year}>
+                              {year}
                             </option>
-                          )
-                        )}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Year:
-                      </label>
-                      <select
-                        value={selectedYear}
-                        onChange={(e) =>
-                          setSelectedYear(parseInt(e.target.value))
-                        }
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        {[
-                          new Date().getFullYear(),
-                          new Date().getFullYear() - 1,
-                          new Date().getFullYear() - 2,
-                        ].map((year) => (
-                          <option key={year} value={year}>
-                            {year}
-                          </option>
-                        ))}
-                      </select>
+                          ))}
+                        </select>
+                      </div>
                     </div>
                   </div>
                 )}
 
                 {/* Date Range Selection */}
                 {useDateRange && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Start Date:
-                      </label>
-                      <input
-                        type="date"
-                        value={startDate}
-                        onChange={(e) => setStartDate(e.target.value)}
-                        max={endDate}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        End Date:
-                      </label>
-                      <input
-                        type="date"
-                        value={endDate}
-                        onChange={(e) => setEndDate(e.target.value)}
-                        min={startDate}
-                        max={new Date().toISOString().split("T")[0]}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
+                  <div className="mb-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+                          <span className="text-green-500">📅</span>
+                          Start Date:
+                        </label>
+                        <input
+                          type="date"
+                          value={startDate}
+                          onChange={(e) => setStartDate(e.target.value)}
+                          max={endDate}
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+                          <span className="text-red-500">📆</span>
+                          End Date:
+                        </label>
+                        <input
+                          type="date"
+                          value={endDate}
+                          onChange={(e) => setEndDate(e.target.value)}
+                          min={startDate}
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">
+                          ⏰ End time will be set to 23:59:59 of the selected
+                          date
+                        </p>
+                      </div>
                     </div>
                   </div>
                 )}
 
                 {/* Date Range Info */}
                 {useDateRange && startDate && endDate && (
-                  <div className="mb-4 p-3 bg-blue-100 rounded-lg text-sm">
-                    <p className="font-medium text-blue-800">
-                      Selected Date Range:
-                    </p>
-                    <p className="text-blue-700">
-                      {new Date(startDate).toLocaleDateString("vi-VN")} 00:00
-                      {" → "}
-                      {new Date(endDate).toLocaleDateString("vi-VN")} 23:59
-                    </p>
-                    {(() => {
-                      const start = new Date(startDate);
-                      const end = new Date(endDate);
-                      const days =
-                        Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
-                      return (
-                        <p className="text-xs mt-1 text-blue-600">
-                          Total: {days} day{days !== 1 ? "s" : ""} (from start
-                          of first day to end of last day)
+                  <div className="mb-6 p-4 bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl border border-blue-200">
+                    <div className="text-center">
+                      <h5 className="font-bold text-blue-900 mb-2 flex items-center justify-center gap-2">
+                        <span>📅</span>
+                        Selected Date Range
+                      </h5>
+                      <div className="bg-white rounded-lg p-3 mb-2">
+                        <p className="text-blue-800 font-medium">
+                          {new Date(startDate).toLocaleDateString("vi-VN")}{" "}
+                          <span className="text-blue-600 font-bold">00:00</span>
+                          {" → "}
+                          {new Date(endDate).toLocaleDateString("vi-VN")}{" "}
+                          <span className="text-blue-600 font-bold">23:59</span>
                         </p>
-                      );
-                    })()}
+                      </div>
+                      {(() => {
+                        const start = new Date(startDate);
+                        const end = new Date(endDate);
+                        const days =
+                          Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
+                        return (
+                          <div className="inline-flex items-center gap-2 px-3 py-1 bg-blue-100 rounded-full">
+                            <span className="text-blue-700 text-xs font-medium">
+                              📊 Total: {days} day{days !== 1 ? "s" : ""}
+                            </span>
+                            <span className="text-blue-500 text-xs">
+                              (from start of first day to end of last day)
+                            </span>
+                          </div>
+                        );
+                      })()}
+                    </div>
                   </div>
                 )}
 
@@ -1641,151 +1804,307 @@ const AdminDashboard = () => {
                     userStatsLoading ||
                     (useDateRange && (!startDate || !endDate))
                   }
-                  className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                  className="w-full px-6 py-4 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl font-semibold text-lg shadow-lg hover:from-blue-700 hover:to-purple-700 disabled:from-gray-400 disabled:to-gray-500 disabled:cursor-not-allowed transform hover:scale-105 transition-all duration-200"
                 >
-                  {userStatsLoading
-                    ? "🔄 Fetching Stats..."
-                    : `📊 Fetch Statistics ${
-                        useDateRange ? "for Date Range" : "for Month"
-                      }`}
+                  {userStatsLoading ? (
+                    <span className="flex items-center justify-center gap-3">
+                      <svg
+                        className="animate-spin h-6 w-6 text-white"
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                      >
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                        ></circle>
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                        ></path>
+                      </svg>
+                      <span>Fetching Stats... (30-60s)</span>
+                    </span>
+                  ) : (
+                    <span className="flex items-center justify-center gap-2">
+                      <span>📊</span>
+                      Fetch Statistics{" "}
+                      {useDateRange ? "for Date Range" : "for Month"}
+                    </span>
+                  )}
                 </button>
               </div>
 
               {/* User Stats Result */}
               {userStatsResult && (
-                <div className="mb-6 p-4 bg-green-50 rounded-lg">
-                  <h4 className="font-medium text-green-900 mb-3">
-                    📊 Statistics Result
-                    {userStatsResult.type === "date_range" && (
-                      <span className="ml-2 text-sm text-green-700">
-                        (Date Range:{" "}
-                        {new Date(userStatsResult.startDate).toLocaleDateString(
-                          "vi-VN"
-                        )}{" "}
-                        00:00 →{" "}
-                        {new Date(userStatsResult.endDate).toLocaleDateString(
-                          "vi-VN"
-                        )}{" "}
-                        23:59 )
-                      </span>
-                    )}
-                    {!userStatsResult.type && (
-                      <span className="ml-2 text-sm text-green-700">
-                        (Month: {userStatsResult.month}/{userStatsResult.year})
-                      </span>
-                    )}
-                  </h4>
-                  {userStatsResult.error ? (
-                    <div className="text-red-600 text-sm">
-                      ❌ Error: {userStatsResult.error}
-                      {userStatsResult.error.includes("Token expired") && (
-                        <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs">
-                          💡 <strong>Solution:</strong> Ask the user to refresh
-                          their token by logging in again to the teacher
-                          platform.
+                <div className="px-8 py-6">
+                  <div className="mb-6 p-6 bg-gradient-to-r from-green-50 to-blue-50 rounded-2xl border border-green-200 shadow-lg">
+                    <h4 className="font-bold text-xl text-green-900 mb-4 text-center">
+                      📊 Statistics Result
+                    </h4>
+
+                    {/* Period Info */}
+                    <div className="mb-4 p-3 bg-white rounded-lg border border-green-200">
+                      {userStatsResult.type === "date_range" && (
+                        <div className="text-center">
+                          <span className="text-sm text-green-700 font-medium">
+                            📅 Date Range:{" "}
+                            {new Date(
+                              userStatsResult.startDate
+                            ).toLocaleDateString("vi-VN")}{" "}
+                            <span className="text-green-600 font-bold">
+                              00:00
+                            </span>{" "}
+                            →{" "}
+                            {new Date(
+                              userStatsResult.endDate
+                            ).toLocaleDateString("vi-VN")}{" "}
+                            <span className="text-green-600 font-bold">
+                              23:59
+                            </span>
+                          </span>
                         </div>
                       )}
-                      {userStatsResult.error.includes(
-                        "Invalid response format"
-                      ) && (
-                        <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs">
-                          💡 <strong>Solution:</strong> The API returned HTML
-                          instead of JSON. This usually means the token is
-                          invalid or expired.
+                      {!userStatsResult.type && (
+                        <div className="text-center">
+                          <span className="text-sm text-green-700 font-medium">
+                            📅 Month: {userStatsResult.month}/
+                            {userStatsResult.year}
+                          </span>
                         </div>
                       )}
                     </div>
-                  ) : (
-                    <div className="space-y-2 text-sm">
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <span className="font-medium">Total Classes:</span>{" "}
-                          {userStatsResult.totalFinishedCount}
-                        </div>
-                        <div>
-                          <span className="font-medium">Absences:</span>{" "}
-                          {userStatsResult.totalParticipationScore}
-                        </div>
-                        <div>
-                          <span className="font-medium">
-                            Effective Classes:
-                          </span>{" "}
-                          {userStatsResult.totalClasses}
-                        </div>
-                        <div>
-                          <span className="font-medium">Total Amount:</span>{" "}
-                          {formatCurrency(userStatsResult.totalMoney)}
-                        </div>
-                      </div>
 
-                      {/* Additional debug info */}
-                      {userStatsResult.totalDiaries && (
-                        <div className="mt-3 p-2 bg-gray-50 rounded text-xs">
-                          <div className="grid grid-cols-3 gap-2 text-gray-600">
-                            <div>
-                              <span className="font-medium">Diaries:</span>{" "}
-                              {userStatsResult.processedDiaries}/
-                              {userStatsResult.totalDiaries}
-                            </div>
-                            <div>
-                              <span className="font-medium">Skipped:</span>{" "}
-                              {userStatsResult.skippedDiaries}
-                            </div>
-                            <div>
-                              <span className="font-medium">Success Rate:</span>{" "}
-                              {Math.round(
-                                (userStatsResult.processedDiaries /
-                                  userStatsResult.totalDiaries) *
-                                  100
-                              )}
-                              %
-                            </div>
+                    {userStatsResult.error ? (
+                      <div className="text-red-600 text-sm">
+                        ❌ Error: {userStatsResult.error}
+                        {userStatsResult.error.includes("Token expired") && (
+                          <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs">
+                            💡 <strong>Solution:</strong> Ask the user to
+                            refresh their token by logging in again to the
+                            teacher platform.
+                          </div>
+                        )}
+                        {userStatsResult.error.includes(
+                          "Invalid response format"
+                        ) && (
+                          <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs">
+                            💡 <strong>Solution:</strong> The API returned HTML
+                            instead of JSON. This usually means the token is
+                            invalid or expired.
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="space-y-2 text-sm">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <span className="font-medium">Total Classes:</span>{" "}
+                            {userStatsResult.totalFinishedCount}
+                          </div>
+                          <div>
+                            <span className="font-medium">Absences:</span>{" "}
+                            {userStatsResult.totalParticipationScore}
+                          </div>
+                          <div>
+                            <span className="font-medium">
+                              Effective Classes:
+                            </span>{" "}
+                            {userStatsResult.totalClasses}
+                          </div>
+                          <div>
+                            <span className="font-medium">Total Amount:</span>{" "}
+                            {formatCurrency(userStatsResult.totalMoney)}
                           </div>
                         </div>
-                      )}
 
-                      {userStatsResult.absentStudents &&
-                        userStatsResult.absentStudents.length > 0 && (
-                          <div className="mt-3">
-                            <span className="font-medium">
-                              Absent Students:
-                            </span>
-                            <div className="mt-2 max-h-32 overflow-y-auto space-y-1">
-                              {userStatsResult.absentStudents.map(
-                                (student, index) => (
-                                  <div
-                                    key={index}
-                                    className="text-xs bg-white p-2 rounded border"
-                                  >
-                                    <div>
-                                      <strong>Class:</strong>{" "}
-                                      {student.className}
-                                    </div>
-                                    <div>
-                                      <strong>Date:</strong>{" "}
-                                      {formatDate(student.fromDate)}
-                                    </div>
-                                    <div>
-                                      <strong>Student:</strong>{" "}
-                                      {student.studentName}
-                                    </div>
-                                  </div>
-                                )
-                              )}
+                        {/* Additional debug info */}
+                        {userStatsResult.totalDiaries && (
+                          <div className="mt-3 p-2 bg-gray-50 rounded text-xs">
+                            <div className="grid grid-cols-3 gap-2 text-gray-600">
+                              <div>
+                                <span className="font-medium">Diaries:</span>{" "}
+                                {userStatsResult.processedDiaries}/
+                                {userStatsResult.totalDiaries}
+                              </div>
+                              <div>
+                                <span className="font-medium">Skipped:</span>{" "}
+                                {userStatsResult.skippedDiaries}
+                              </div>
+                              <div>
+                                <span className="font-medium">
+                                  Success Rate:
+                                </span>{" "}
+                                {Math.round(
+                                  (userStatsResult.processedDiaries /
+                                    userStatsResult.totalDiaries) *
+                                    100
+                                )}
+                                %
+                              </div>
                             </div>
                           </div>
                         )}
-                    </div>
-                  )}
+
+                        {userStatsResult.absentStudents &&
+                          userStatsResult.absentStudents.length > 0 && (
+                            <div className="mt-6">
+                              <h3 className="font-bold text-lg mb-4 text-center text-gray-800">
+                                📋 Absent Students Report
+                              </h3>
+
+                              {/* Desktop Table View */}
+                              <div className="hidden md:block">
+                                <div className="overflow-x-auto">
+                                  <table className="w-full border-collapse border border-gray-300 rounded-lg overflow-hidden shadow-lg">
+                                    <thead className="bg-blue-600 text-white">
+                                      <tr>
+                                        <th className="px-4 py-3 text-left font-semibold border-r border-gray-300">
+                                          📚 Class Name
+                                        </th>
+                                        <th className="px-4 py-3 text-left font-semibold border-r border-gray-300">
+                                          📅 Date
+                                        </th>
+                                        <th className="px-4 py-3 text-left font-semibold border-r border-gray-300">
+                                          🕐 Time
+                                        </th>
+                                        <th className="px-4 py-3 text-left font-semibold">
+                                          👤 Student Name
+                                        </th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="bg-white text-gray-800">
+                                      {userStatsResult.absentStudents
+                                        .sort(
+                                          (a, b) =>
+                                            new Date(b.fromDate) -
+                                            new Date(a.fromDate)
+                                        )
+                                        .map((student, index) => (
+                                          <tr
+                                            key={`${student.fromDate}-${index}`}
+                                            className={`${
+                                              index % 2 === 0
+                                                ? "bg-gray-50"
+                                                : "bg-white"
+                                            } hover:bg-blue-50 hover:text-blue-800 transition-colors duration-200`}
+                                          >
+                                            <td className="px-4 py-3 border-r border-gray-300 font-medium">
+                                              {student.className}
+                                            </td>
+                                            <td className="px-4 py-3 border-r border-gray-300">
+                                              {new Date(
+                                                student.fromDate
+                                              ).toLocaleDateString("vi-VN", {
+                                                weekday: "long",
+                                                year: "numeric",
+                                                month: "long",
+                                                day: "numeric",
+                                              })}
+                                            </td>
+                                            <td className="px-4 py-3 border-r border-gray-300 text-sm">
+                                              {new Date(
+                                                student.fromDate
+                                              ).toLocaleTimeString("vi-VN", {
+                                                hour: "2-digit",
+                                                minute: "2-digit",
+                                              })}
+                                            </td>
+                                            <td className="px-4 py-3 font-medium">
+                                              {student.studentName}
+                                            </td>
+                                          </tr>
+                                        ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+
+                              {/* Mobile Card View */}
+                              <div className="md:hidden">
+                                <div className="space-y-3 max-h-96 overflow-y-auto">
+                                  {userStatsResult.absentStudents
+                                    .sort(
+                                      (a, b) =>
+                                        new Date(b.fromDate) -
+                                        new Date(a.fromDate)
+                                    )
+                                    .map((student, index) => (
+                                      <div
+                                        key={`${student.fromDate}-${index}`}
+                                        className="p-4 border rounded-lg shadow-md bg-white border-gray-200 text-gray-800 hover:shadow-lg transition-shadow duration-200"
+                                      >
+                                        <div className="flex items-start justify-between mb-2">
+                                          <div className="flex-1">
+                                            <div className="flex items-center mb-2">
+                                              <span className="text-blue-500 mr-2">
+                                                📚
+                                              </span>
+                                              <h4 className="font-semibold text-sm">
+                                                {student.className}
+                                              </h4>
+                                            </div>
+                                            <div className="flex items-center mb-2">
+                                              <span className="text-green-500 mr-2">
+                                                📅
+                                              </span>
+                                              <p className="text-sm">
+                                                {new Date(
+                                                  student.fromDate
+                                                ).toLocaleDateString("vi-VN", {
+                                                  weekday: "short",
+                                                  year: "numeric",
+                                                  month: "short",
+                                                  day: "numeric",
+                                                })}
+                                              </p>
+                                            </div>
+                                            <div className="flex items-center mb-2">
+                                              <span className="text-purple-500 mr-2">
+                                                🕐
+                                              </span>
+                                              <p className="text-sm">
+                                                {new Date(
+                                                  student.fromDate
+                                                ).toLocaleTimeString("vi-VN", {
+                                                  hour: "2-digit",
+                                                  minute: "2-digit",
+                                                })}
+                                              </p>
+                                            </div>
+                                            <div className="flex items-center">
+                                              <span className="text-red-500 mr-2">
+                                                👤
+                                              </span>
+                                              <p className="font-medium">
+                                                {student.studentName}
+                                              </p>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    ))}
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 
-              <div className="flex justify-end">
+              <div className="flex justify-end px-8 py-6 bg-gray-50 border-t border-gray-200">
                 <button
                   onClick={() => setShowUserDetailsModal(false)}
-                  className="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400"
+                  className="px-6 py-3 bg-gradient-to-r from-gray-500 to-gray-600 text-white rounded-lg font-medium hover:from-gray-600 hover:to-gray-700 transform hover:scale-105 transition-all duration-200 shadow-md"
                 >
-                  Close
+                  ✕ Close
                 </button>
               </div>
             </div>

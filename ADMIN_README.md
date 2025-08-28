@@ -47,6 +47,16 @@ Admin Dashboard là một màn hình quản trị mới được thêm vào Teac
 - Xem số lượt truy cập tổng cộng
 - Thời gian cập nhật cuối cùng
 
+### 🚀 Performance Improvements (v3.3)
+
+- **pLimit Integration**: Giới hạn 5 concurrent requests (giống TeacherStats.js)
+- **Timeout Handling**: 30-second timeout per request để tránh hanging
+- **Graceful Error Handling**: Partial success thay vì complete failure
+- **Duplicate Prevention**: Tránh đếm trùng lặp absence records
+- **Enhanced Logging**: Clear console messages với emojis
+
+_📋 Xem chi tiết: [ADMIN_DASHBOARD_IMPROVEMENTS.md](./ADMIN_DASHBOARD_IMPROVEMENTS.md)_
+
 ## Cách sử dụng
 
 ### 1. Truy cập Admin Dashboard
@@ -98,6 +108,30 @@ Admin Dashboard là một màn hình quản trị mới được thêm vào Teac
 - Không ảnh hưởng đến các tính năng hiện có
 - Sử dụng cùng Firebase project và cấu hình
 - Responsive design cho mobile và desktop
+
+## 🧪 Testing & Monitoring
+
+### **Performance Testing**
+
+1. **Test Monthly Stats**: Sử dụng "Fetch Statistics for Month"
+2. **Test Date Range**: Sử dụng "Fetch Statistics for Date Range"
+3. **Monitor Console**: Xem enhanced logging với emojis
+4. **Check Performance**: So sánh với trước khi cải tiến
+5. **Verify Accuracy**: Kiểm tra absence statistics có chính xác không
+
+### **Expected Improvements**
+
+- ✅ **Stability**: Giống như TeacherStats.js đã proven to work
+- ✅ **Performance**: Rate limiting prevents server overload
+- ✅ **Resilience**: Partial failures don't kill entire process
+- ✅ **Debugging**: Clear console logs với emojis
+- ✅ **Accuracy**: Duplicate checking ensures correct stats
+
+## 📚 Documentation
+
+- **Performance Improvements**: [ADMIN_DASHBOARD_IMPROVEMENTS.md](./ADMIN_DASHBOARD_IMPROVEMENTS.md)
+- **Main System**: [README.md](./README.md)
+- **Teacher Stats**: [TeacherStats.js](./src/TeacherStats.js)
 
 ## Hỗ trợ
 

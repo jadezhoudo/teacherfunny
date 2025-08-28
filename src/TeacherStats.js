@@ -770,9 +770,11 @@ const TeacherStats = () => {
                       type="date"
                       value={customEndDate}
                       onChange={(e) => setCustomEndDate(e.target.value)}
-                      max={new Date().toISOString().split("T")[0]}
                       className="w-full px-3 py-3 border rounded-lg focus:ring focus:ring-blue-200 bg-inherit"
                     />
+                    <p className="text-xs text-gray-500 mt-1">
+                      ⏰ End time will be set to 23:59:59 of the selected date
+                    </p>
                   </div>
 
                   {/* Reset to today button */}
@@ -1066,44 +1068,190 @@ const TeacherStats = () => {
             )}
 
             {/* Absent Students */}
+
+            {/* Absent Students */}
             {stats &&
               stats.absentStudents &&
               stats.absentStudents.length > 0 && (
                 <div className="mt-8">
-                  <h3 className="font-bold text-lg mb-4">
-                    - Absent Students -
+                  <h3 className="font-bold text-lg mb-4 text-center">
+                    📋 Absent Students Report
                   </h3>
-                  <div className="max-h-80 overflow-y-auto space-y-4">
-                    {stats.absentStudents
-                      .sort(
-                        (a, b) => new Date(b.fromDate) - new Date(a.fromDate)
-                      )
-                      .map((student, index) => (
-                        <div
-                          key={`${student.fromDate}-${index}`}
-                          className={`p-4 border rounded-lg shadow ${
+
+                  {/* Desktop Table View */}
+                  <div className="hidden md:block">
+                    <div className="overflow-x-auto">
+                      <table className="w-full border-collapse border border-gray-300 rounded-lg overflow-hidden shadow-lg">
+                        <thead
+                          className={`${
                             isDarkMode
-                              ? "bg-gray-700 border-gray-600"
-                              : "bg-gray-50 border-gray-200"
+                              ? "bg-gray-800 text-gray-100"
+                              : "bg-blue-600 text-white"
                           }`}
                         >
-                          <p className="font-semibold mb-1">
-                            Class: {student.className}
-                          </p>
-                          <p className="text-sm mb-2">
-                            {new Date(student.fromDate).toLocaleDateString(
-                              "vi-VN",
-                              {
-                                weekday: "long",
-                                year: "numeric",
-                                month: "long",
-                                day: "numeric",
-                              }
-                            )}
-                          </p>
-                          <p>Student: {student.studentName}</p>
-                        </div>
-                      ))}
+                          <tr>
+                            <th className="px-4 py-3 text-left font-semibold border-r border-gray-300">
+                              📚 Class Name
+                            </th>
+                            <th className="px-4 py-3 text-left font-semibold border-r border-gray-300">
+                              📅 Date
+                            </th>
+                            <th className="px-4 py-3 text-left font-semibold border-r border-gray-300">
+                              🕐 Time
+                            </th>
+                            <th className="px-4 py-3 text-left font-semibold">
+                              👤 Student Name
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody
+                          className={`${
+                            isDarkMode
+                              ? "bg-gray-700 text-gray-100"
+                              : "bg-white text-gray-800"
+                          }`}
+                        >
+                          {stats.absentStudents
+                            .sort(
+                              (a, b) =>
+                                new Date(b.fromDate) - new Date(a.fromDate)
+                            )
+                            .map((student, index) => (
+                              <tr
+                                key={`${student.fromDate}-${index}`}
+                                className={`${
+                                  index % 2 === 0
+                                    ? isDarkMode
+                                      ? "bg-gray-600"
+                                      : "bg-gray-50"
+                                    : isDarkMode
+                                    ? "bg-gray-700"
+                                    : "bg-white"
+                                } hover:bg-blue-50 hover:text-blue-800 transition-colors duration-200`}
+                              >
+                                <td className="px-4 py-3 border-r border-gray-300 font-medium">
+                                  {student.className}
+                                </td>
+                                <td className="px-4 py-3 border-r border-gray-300">
+                                  {new Date(
+                                    student.fromDate
+                                  ).toLocaleDateString("vi-VN", {
+                                    weekday: "long",
+                                    year: "numeric",
+                                    month: "long",
+                                    day: "numeric",
+                                  })}
+                                </td>
+                                <td className="px-4 py-3 border-r border-gray-300 text-sm">
+                                  {new Date(
+                                    student.fromDate
+                                  ).toLocaleTimeString("vi-VN", {
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  })}
+                                </td>
+                                <td className="px-4 py-3 font-medium">
+                                  {student.studentName}
+                                </td>
+                              </tr>
+                            ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* Mobile Card View */}
+                  <div className="md:hidden">
+                    <div className="space-y-3 max-h-96 overflow-y-auto">
+                      {stats.absentStudents
+                        .sort(
+                          (a, b) => new Date(b.fromDate) - new Date(a.fromDate)
+                        )
+                        .map((student, index) => (
+                          <div
+                            key={`${student.fromDate}-${index}`}
+                            className={`p-4 border rounded-lg shadow-md ${
+                              isDarkMode
+                                ? "bg-gray-700 border-gray-600 text-gray-100"
+                                : "bg-white border-gray-200 text-gray-800"
+                            } hover:shadow-lg transition-shadow duration-200`}
+                          >
+                            <div className="flex items-start justify-between mb-2">
+                              <div className="flex-1">
+                                <div className="flex items-center mb-2">
+                                  <span className="text-blue-500 mr-2">📚</span>
+                                  <h4 className="font-semibold text-sm">
+                                    {student.className}
+                                  </h4>
+                                </div>
+                                <div className="flex items-center mb-2">
+                                  <span className="text-green-500 mr-2">
+                                    📅
+                                  </span>
+                                  <p className="text-sm">
+                                    {new Date(
+                                      student.fromDate
+                                    ).toLocaleDateString("vi-VN", {
+                                      weekday: "short",
+                                      year: "numeric",
+                                      month: "short",
+                                      day: "numeric",
+                                    })}
+                                  </p>
+                                </div>
+                                <div className="flex items-center mb-2">
+                                  <span className="text-purple-500 mr-2">
+                                    🕐
+                                  </span>
+                                  <p className="text-sm">
+                                    {new Date(
+                                      student.fromDate
+                                    ).toLocaleTimeString("vi-VN", {
+                                      hour: "2-digit",
+                                      minute: "2-digit",
+                                    })}
+                                  </p>
+                                </div>
+                                <div className="flex items-center">
+                                  <span className="text-red-500 mr-2">👤</span>
+                                  <p className="font-medium">
+                                    {student.studentName}
+                                  </p>
+                                </div>
+                              </div>
+                              <div
+                                className={`ml-3 px-2 py-1 rounded-full text-xs font-medium ${
+                                  isDarkMode
+                                    ? "bg-red-900 text-red-200"
+                                    : "bg-red-100 text-red-800"
+                                }`}
+                              >
+                                Absent
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+
+                  {/* Summary Stats */}
+                  <div
+                    className={`mt-4 p-3 rounded-lg text-center ${
+                      isDarkMode
+                        ? "bg-gray-700 border border-gray-600"
+                        : "bg-blue-50 border border-blue-200"
+                    }`}
+                  >
+                    <p
+                      className={`text-sm font-medium ${
+                        isDarkMode ? "text-gray-300" : "text-blue-800"
+                      }`}
+                    >
+                      📊 Total Absent Records:{" "}
+                      <span className="font-bold">
+                        {stats.absentStudents.length}
+                      </span>
+                    </p>
                   </div>
                 </div>
               )}

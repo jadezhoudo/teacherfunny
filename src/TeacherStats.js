@@ -3,6 +3,7 @@ import { db, auth } from "./firebase";
 import { doc, setDoc } from "firebase/firestore";
 import { GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 import pLimit from "p-limit";
+import donateQR from "./donate-qr.jpg";
 
 const TeacherStats = () => {
   const [loading, setLoading] = useState(false);
@@ -1088,6 +1089,12 @@ const TeacherStats = () => {
         </div>
       </div>
 
+      <div className="px-4 sm:px-0">
+        <div className="sm:max-w-xl sm:mx-auto">
+          <DonateSection isDarkMode={isDarkMode} />
+        </div>
+      </div>
+
       {/* Footer */}
       <footer className="mt-12 text-center text-sm">
         <div className="flex flex-col sm:flex-row items-center justify-center gap-2 text-gray-500">
@@ -1098,4 +1105,71 @@ const TeacherStats = () => {
     </div>
   );
 };
+
+// ... (giữ nguyên các import hiện tại)
+// ⬇️ THÊM dưới các import:
+const DONATE_INFO = {
+  title: "Support the Project ❤️",
+  subtitle: "If you find this tool helpful, consider buying me a coffee!",
+  bankLabel: "TP Bank",
+  bankNumber: "0377 3935 368",
+  qrImageUrl: donateQR,
+};
+
+// ⬇️ THÊM component DonateSection (UI thuần, không ảnh hưởng logic khác)
+const DonateSection = ({ isDarkMode }) => {
+  const [copied, setCopied] = React.useState(false);
+
+  const copyBankNumber = async () => {
+    try {
+      await navigator.clipboard.writeText(DONATE_INFO.bankNumber);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch (e) {}
+  };
+
+  return (
+    <div
+      className={`mt-3 rounded-3xl border shadow ${
+        isDarkMode
+          ? "bg-gray-800 border-gray-700 text-gray-100"
+          : "bg-white border-pink-200 text-gray-900"
+      }`}
+    >
+      <div className="px-6 py-7 grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8 items-center">
+        <div className="text-center md:text-left">
+          <h3 className="text-2xl font-bold mb-2">{DONATE_INFO.title}</h3>
+          <p
+            className={`mb-5 ${isDarkMode ? "text-gray-300" : "text-gray-600"}`}
+          >
+            {DONATE_INFO.subtitle}
+          </p>
+
+          <div
+            className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl ${
+              isDarkMode ? "bg-gray-700" : "bg-pink-50"
+            }`}
+          >
+            <span className="font-semibold">{DONATE_INFO.bankLabel}:</span>
+            <span className="tracking-wide font-mono">
+              {DONATE_INFO.bankNumber}
+            </span>
+          </div>
+        </div>
+
+        <div className="flex justify-center md:justify-end">
+          <img
+            src={DONATE_INFO.qrImageUrl}
+            alt="Donate QR"
+            className="w-56 h-56 md:w48 md:h-48 object-contain rounded-xl border"
+            onError={(e) => {
+              e.currentTarget.style.display = "none";
+            }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export default TeacherStats;

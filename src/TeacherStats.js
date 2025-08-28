@@ -4,6 +4,12 @@ import { doc, setDoc } from "firebase/firestore";
 import { GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 import pLimit from "p-limit";
 import donateQR from "./donate-qr.jpg";
+import {
+  updateDoc,
+  increment,
+  serverTimestamp,
+  onSnapshot,
+} from "firebase/firestore";
 
 const TeacherStats = () => {
   const [loading, setLoading] = useState(false);
@@ -28,6 +34,7 @@ const TeacherStats = () => {
     localStorage.getItem("teacher_token") || ""
   );
   const [showTokenInput, setShowTokenInput] = useState(false);
+  const [visitorTotal, setVisitorTotal] = useState(0);
 
   // NEW: Tab state + Date Range state
   const [activeTab, setActiveTab] = useState("month"); // 'month' | 'daterange'
@@ -60,36 +67,42 @@ const TeacherStats = () => {
     }
   };
 
-  // Hàm SAVE TOKEN:
-  //   const handleSaveToken = () => {
-  //     if (!inputToken || inputToken.trim() === "") {
-  //       //Console.error("Please enter a token.");
-  //       return;
-  //     }
+  useEffect(() => {
+    const ref = doc(db, "metrics", "visitor_count");
 
-  //     try {
-  //       // parse thử để validate
-  //       const decoded = parseJwt(inputToken);
-  //       if (!decoded) {
-  //         //Console.error("Invalid JWT.");
-  //         return;
-  //       }
+    // realtime listen
+    const unsub = onSnapshot(ref, (snap) => {
+      setVisitorTotal(snap.data()?.total || 0);
+    });
 
-  //       localStorage.setItem("teacher_token", inputToken);
-  //       localStorage.setItem("teacher_email", decoded?.email || "");
+    // đếm mỗi lần xem trang
+    countVisitEveryTime();
 
-  //       setBearerToken(inputToken);
-  //       setUserEmail(decoded?.email || "");
+    return () => unsub();
+  }, []);
 
-  //       //Console.log("Manual token saved successfully.");
+  const countVisitEveryTime = async () => {
+    try {
+      const ref = doc(db, "metrics", "visitor_count");
 
-  //       // Optional: close manual input (nếu muốn)
-  //       //   setShowManualInput(false);
-  //       setInputToken("");
-  //     } catch (error) {
-  //       //Console.error("Error saving manual token:", error);
-  //     }
-  //   };
+      // tăng 1 mỗi lần render component
+      try {
+        await updateDoc(ref, {
+          total: increment(1),
+          updatedAt: serverTimestamp(),
+        });
+      } catch {
+        // nếu doc chưa tồn tại thì tạo mới
+        await setDoc(
+          ref,
+          { total: 1, updatedAt: serverTimestamp() },
+          { merge: true }
+        );
+      }
+    } catch (e) {
+      console.error("visitor counter error", e);
+    }
+  };
 
   const handleSaveToken = () => {
     if (!inputToken || inputToken.trim() === "") {
@@ -1096,10 +1109,13 @@ const TeacherStats = () => {
       </div>
 
       {/* Footer */}
-      <footer className="mt-6 text-center text-sm">
+      <footer className="mt-12 text-center text-sm">
         <div className="flex flex-col sm:flex-row items-center justify-center gap-2 text-gray-500">
           <span>• Ver 3.3</span>
           <span>©2025 Châu Đỗ. All rights reserved.</span>
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/60">
+            👀 Visitors: <b>{visitorTotal}</b>
+          </span>
         </div>
       </footer>
     </div>

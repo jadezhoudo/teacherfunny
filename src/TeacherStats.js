@@ -277,14 +277,17 @@ const TeacherStats = () => {
     generateCustomDateRanges(startDate, endDate) {
       const ranges = [];
       let currentDate = new Date(startDate);
+      currentDate.setHours(0, 0, 0, 0); // Start of day
+
       const finalEndDate = new Date(endDate);
+      finalEndDate.setHours(23, 59, 59, 999); // End of day
 
       while (currentDate <= finalEndDate) {
         const toDate = new Date(currentDate);
         toDate.setDate(toDate.getDate() + 6); // 7-day chunks
 
         if (toDate > finalEndDate) {
-          toDate.setTime(finalEndDate.getTime());
+          toDate.setTime(finalEndDate.getTime()); // Use the end date with 23:59:59
         } else {
           toDate.setHours(23, 59, 59, 999);
         }
@@ -797,9 +800,13 @@ const TeacherStats = () => {
                     >
                       <p className="font-medium">Selected Date Range:</p>
                       <p>
-                        {new Date(customStartDate).toLocaleDateString("vi-VN")}
+                        {new Date(customStartDate).toLocaleDateString("vi-VN")}{" "}
+                        00:00
                         {" → "}
-                        {new Date(customEndDate).toLocaleDateString("vi-VN")}
+                        {new Date(customEndDate).toLocaleDateString(
+                          "vi-VN"
+                        )}{" "}
+                        23:59
                       </p>
                       {(() => {
                         const start = new Date(customStartDate);
@@ -808,7 +815,8 @@ const TeacherStats = () => {
                           Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
                         return (
                           <p className="text-xs mt-1">
-                            Total: {days} day{days !== 1 ? "s" : ""}
+                            Total: {days} day{days !== 1 ? "s" : ""} (from start
+                            of first day to end of last day)
                           </p>
                         );
                       })()}
@@ -1047,8 +1055,9 @@ const TeacherStats = () => {
                           {new Date(customStartDate).toLocaleDateString(
                             "vi-VN"
                           )}{" "}
-                          -{" "}
-                          {new Date(customEndDate).toLocaleDateString("vi-VN")}
+                          00:00 -{" "}
+                          {new Date(customEndDate).toLocaleDateString("vi-VN")}{" "}
+                          23:59
                         </p>
                       </div>
                     )}

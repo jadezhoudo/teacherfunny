@@ -58,6 +58,15 @@ const AdminDashboard = () => {
     return today.toISOString().split("T")[0];
   });
 
+  // NEW: User Section Management states
+  const [userSections, setUserSections] = useState({});
+  const [showSectionManager, setShowSectionManager] = useState(false);
+  const [selectedUserForSections, setSelectedUserForSections] = useState(null);
+
+  // NEW: Token copy states
+  const [copiedToken, setCopiedToken] = useState(false);
+  const [copiedTokenEmail, setCopiedTokenEmail] = useState("");
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setUser(user);
@@ -941,6 +950,106 @@ const AdminDashboard = () => {
     }
   };
 
+  // NEW: Fetch user sections configuration
+  const fetchUserSections = async (userEmail) => {
+    try {
+      const sectionsDoc = doc(db, "user_sections", userEmail);
+      const sectionsSnapshot = await getDoc(sectionsDoc);
+
+      if (sectionsSnapshot.exists()) {
+        setUserSections(sectionsSnapshot.data());
+      } else {
+        // Default sections configuration
+        const defaultSections = {
+          teacherStatistics: true,
+          absentStudents: true,
+          statisticsSummary: true,
+          studentDetails: true,
+          donateSection: true,
+          visitorsAnalytics: true,
+          darkMode: true,
+        };
+        setUserSections(defaultSections);
+      }
+    } catch (error) {
+      console.error("Error fetching user sections:", error);
+      setUserSections({});
+    }
+  };
+
+  // NEW: Save user sections configuration
+  const saveUserSections = async (userEmail, sections) => {
+    try {
+      await setDoc(doc(db, "user_sections", userEmail), {
+        ...sections,
+        updatedAt: new Date().toISOString(),
+        updatedBy: user.email,
+      });
+      setUserSections(sections);
+      console.log("User sections saved successfully");
+    } catch (error) {
+      console.error("Error saving user sections:", error);
+    }
+  };
+
+  // NEW: Toggle section visibility
+  const toggleSection = (sectionKey) => {
+    if (selectedUserForSections) {
+      const updatedSections = {
+        ...userSections,
+        [sectionKey]: !userSections[sectionKey],
+      };
+      setUserSections(updatedSections);
+    }
+  };
+
+  // NEW: Reset sections to default
+  const resetSectionsToDefault = () => {
+    const defaultSections = {
+      teacherStatistics: true,
+      absentStudents: true,
+      statisticsSummary: true,
+      studentDetails: true,
+      donateSection: true,
+      visitorsAnalytics: true,
+      darkMode: true,
+    };
+    setUserSections(defaultSections);
+  };
+
+  // NEW: Copy token to clipboard
+  const copyTokenToClipboard = async (token, email) => {
+    try {
+      await navigator.clipboard.writeText(token);
+      setCopiedToken(true);
+      setCopiedTokenEmail(email);
+
+      // Reset copied state after 2 seconds
+      setTimeout(() => {
+        setCopiedToken(false);
+        setCopiedTokenEmail("");
+      }, 2000);
+
+      console.log("✅ Token copied to clipboard for:", email);
+    } catch (error) {
+      console.error("❌ Failed to copy token:", error);
+      // Fallback for older browsers
+      const textArea = document.createElement("textarea");
+      textArea.value = token;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textArea);
+
+      setCopiedToken(true);
+      setCopiedTokenEmail(email);
+      setTimeout(() => {
+        setCopiedToken(false);
+        setCopiedTokenEmail("");
+      }, 2000);
+    }
+  };
+
   // NEW: Handle user selection
   const handleUserSelect = async (userEmail) => {
     setSelectedUser(userEmail);
@@ -1319,14 +1428,26 @@ const AdminDashboard = () => {
                                 {user.month}/{user.year}
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                <button
-                                  onClick={() =>
-                                    handleUserSelectForDetails(user.email)
-                                  }
-                                  className="text-blue-600 hover:text-blue-900 font-medium"
-                                >
-                                  📊 View Stats
-                                </button>
+                                <div className="flex flex-col gap-2">
+                                  <button
+                                    onClick={() =>
+                                      handleUserSelectForDetails(user.email)
+                                    }
+                                    className="text-blue-600 hover:text-blue-900 font-medium"
+                                  >
+                                    📊 View Stats
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setSelectedUserForSections(user.email);
+                                      fetchUserSections(user.email);
+                                      setShowSectionManager(true);
+                                    }}
+                                    className="text-green-600 hover:text-green-900 font-medium"
+                                  >
+                                    ⚙️ Manage Sections
+                                  </button>
+                                </div>
                               </td>
                             </tr>
                           ))}
@@ -1567,10 +1688,44 @@ const AdminDashboard = () => {
 
                   {/* Token Display */}
                   <div className="mt-4">
-                    <span className="font-medium text-sm">🔑 Token:</span>
-                    <div className="mt-2 p-2 bg-gray-100 rounded text-xs font-mono break-all">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-medium text-sm">🔑 Token:</span>
+                      {userDetails.token && (
+                        <button
+                          onClick={() =>
+                            copyTokenToClipboard(
+                              userDetails.token,
+                              userDetails.email
+                            )
+                          }
+                          className={`px-3 py-1 text-xs rounded-lg font-medium transition-all duration-200 ${
+                            copiedToken &&
+                            copiedTokenEmail === userDetails.email
+                              ? "bg-green-500 text-white"
+                              : "bg-blue-500 hover:bg-blue-600 text-white"
+                          }`}
+                        >
+                          {copiedToken &&
+                          copiedTokenEmail === userDetails.email ? (
+                            <span className="flex items-center gap-1">
+                              ✅ Copied!
+                            </span>
+                          ) : (
+                            <span className="flex items-center gap-1">
+                              📋 Copy
+                            </span>
+                          )}
+                        </button>
+                      )}
+                    </div>
+                    <div className="p-2 bg-gray-100 rounded text-xs font-mono break-all">
                       {userDetails.token || "No token available"}
                     </div>
+                    {userDetails.token && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        Click "Copy" button to copy token to clipboard
+                      </p>
+                    )}
                   </div>
                 </div>
               )}
@@ -1581,6 +1736,117 @@ const AdminDashboard = () => {
                   className="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400"
                 >
                   Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* NEW: Section Manager Modal */}
+      {showSectionManager && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 p-4">
+          <div className="relative top-10 mx-auto w-11/12 md:w-3/4 lg:w-2/3 xl:w-1/2">
+            <div className="bg-white rounded-3xl shadow-2xl overflow-hidden">
+              {/* Header */}
+              <div className="bg-gradient-to-r from-green-600 to-blue-600 px-8 py-6">
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center">
+                      <span className="text-white text-2xl">⚙️</span>
+                    </div>
+                    <div>
+                      <h3 className="text-2xl font-bold text-white">
+                        Section Manager
+                      </h3>
+                      <p className="text-green-100 text-sm">
+                        Manage visible sections for: {selectedUserForSections}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setShowSectionManager(false)}
+                    className="w-10 h-10 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center text-white hover:text-gray-100 transition-colors"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+
+              {/* Section Controls */}
+              <div className="px-8 py-6">
+                <div className="mb-6">
+                  <h4 className="font-bold text-xl mb-4 text-center text-gray-800">
+                    🎛️ Toggle Section Visibility
+                  </h4>
+                  <p className="text-sm text-gray-600 text-center mb-6">
+                    Control which sections are visible to this user in
+                    TeacherStats
+                  </p>
+                </div>
+
+                {/* Section Toggles */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                  {Object.entries(userSections).map(
+                    ([sectionKey, isVisible]) => (
+                      <div
+                        key={sectionKey}
+                        className={`p-4 border rounded-lg transition-all duration-200 ${
+                          isVisible
+                            ? "bg-green-50 border-green-200"
+                            : "bg-red-50 border-red-200"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1">
+                            <h5 className="font-medium text-gray-900 capitalize">
+                              {sectionKey.replace(/([A-Z])/g, " $1").trim()}
+                            </h5>
+                            <p className="text-xs text-gray-500 mt-1">
+                              {isVisible ? "✅ Visible" : "❌ Hidden"}
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => toggleSection(sectionKey)}
+                            className={`px-4 py-2 rounded-lg font-medium text-sm transition-colors ${
+                              isVisible
+                                ? "bg-red-500 hover:bg-red-600 text-white"
+                                : "bg-green-500 hover:bg-green-600 text-white"
+                            }`}
+                          >
+                            {isVisible ? "Hide" : "Show"}
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  )}
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                  <button
+                    onClick={resetSectionsToDefault}
+                    className="px-6 py-3 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg font-medium transition-colors"
+                  >
+                    🔄 Reset to Default
+                  </button>
+                  <button
+                    onClick={() =>
+                      saveUserSections(selectedUserForSections, userSections)
+                    }
+                    className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
+                  >
+                    💾 Save Changes
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex justify-end px-8 py-6 bg-gray-50 border-t border-gray-200">
+                <button
+                  onClick={() => setShowSectionManager(false)}
+                  className="px-6 py-3 bg-gradient-to-r from-gray-500 to-gray-600 text-white rounded-lg font-medium hover:from-gray-600 hover:to-gray-700 transform hover:scale-105 transition-all duration-200 shadow-md"
+                >
+                  ✕ Close
                 </button>
               </div>
             </div>
@@ -1878,6 +2144,48 @@ const AdminDashboard = () => {
                           </span>
                         </div>
                       )}
+                    </div>
+
+                    {/* User Token Info */}
+                    <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="text-sm text-blue-700 font-medium">
+                            👤 User:
+                          </span>{" "}
+                          <span className="text-blue-800">
+                            {userStatsResult.userEmail}
+                          </span>
+                        </div>
+                        {(() => {
+                          const user = userList.find(
+                            (u) => u.email === userStatsResult.userEmail
+                          );
+                          return user?.token ? (
+                            <button
+                              onClick={() =>
+                                copyTokenToClipboard(user.token, user.email)
+                              }
+                              className={`px-3 py-1 text-xs rounded-lg font-medium transition-all duration-200 ${
+                                copiedToken && copiedTokenEmail === user.email
+                                  ? "bg-green-500 text-white"
+                                  : "bg-blue-500 hover:bg-blue-600 text-white"
+                              }`}
+                            >
+                              {copiedToken &&
+                              copiedTokenEmail === user.email ? (
+                                <span className="flex items-center gap-1">
+                                  ✅ Copied!
+                                </span>
+                              ) : (
+                                <span className="flex items-center gap-1">
+                                  📋 Copy Token
+                                </span>
+                              )}
+                            </button>
+                          ) : null;
+                        })()}
+                      </div>
                     </div>
 
                     {userStatsResult.error ? (

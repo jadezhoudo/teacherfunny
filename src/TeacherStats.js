@@ -623,7 +623,7 @@ const TeacherStats = () => {
         isDarkMode
           ? "bg-gray-900 text-gray-100"
           : "bg-gradient-to-r from-pink-200 via-pink-100 to-pink-200 text-gray-900"
-      } py-6 flex flex-col justify-center sm:py-12 transition-colors duration-500`}
+      } py-3 flex flex-col justify-center sm:py-6 transition-colors duration-500`}
     >
       <div className="relative py-3 sm:max-w-2xl sm:mx-auto">
         <div
@@ -1096,7 +1096,7 @@ const TeacherStats = () => {
       </div>
 
       {/* Footer */}
-      <footer className="mt-12 text-center text-sm">
+      <footer className="mt-6 text-center text-sm">
         <div className="flex flex-col sm:flex-row items-center justify-center gap-2 text-gray-500">
           <span>• Ver 3.3</span>
           <span>©2025 Châu Đỗ. All rights reserved.</span>
